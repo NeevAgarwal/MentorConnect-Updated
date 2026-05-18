@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Admin — MentorConnect</title>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="dashboard.css" />
+</head>
+<body>
+  <div class="bg-orbs"><div class="orb orb-1"></div><div class="orb orb-2"></div><div class="bg-grid"></div></div>
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-logo"><div class="logo-icon"><svg width="18" height="18" fill="none" stroke="#060B18" stroke-width="2.5" viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5z"/></svg></div><span class="logo-text">Admin</span></div>
+    <nav class="sidebar-nav">
+      <a href="dashboard.html" class="nav-item">Dashboard</a>
+      <a href="admin.html" class="nav-item active">Admin panel</a>
+    </nav>
+    <button class="logout-btn" id="logoutBtn">Sign Out</button>
+  </aside>
+  <main class="main-content">
+    <header class="topbar">
+      <div class="topbar-left">
+        <button class="hamburger" id="hamburger"><span></span><span></span><span></span></button>
+        <div><h1 class="page-title">Administration</h1><p class="page-sub">Users, bookings, featuring mentors</p></div>
+      </div>
+    </header>
+    <div class="stats-row" id="adminStats"></div>
+    <section class="section-block glass-panel">
+      <h2 class="section-head">Users</h2>
+      <div id="adminUsers" class="admin-table-wrap"></div>
+    </section>
+    <section class="section-block glass-panel">
+      <h2 class="section-head">Bookings</h2>
+      <div id="adminBookings" class="admin-table-wrap"></div>
+    </section>
+  </main>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+  <script src="config.js"></script>
+  <script src="api.js"></script>
+  <script src="firebase-config.js"></script>
+  <script src="js/auth/auth-state.js"></script>
+  <script src="admin.js"></script>
+</body>
+</html>

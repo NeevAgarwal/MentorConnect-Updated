@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>IdeaSphere — Find Your Mentor</title>
+  <link rel="stylesheet" href="style.css"/>
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+</head>
+<body>
+
+  <!-- ── Vanta Animated Background ── -->
+  <div id="vanta-bg"></div>
+
+  <!-- ── Navbar ── -->
+  <nav class="navbar">
+    <a href="index.html" class="nav-logo">
+      <div class="logo-icon"><i data-lucide="lightbulb"></i></div>
+      <span class="logo-text">IdeaSphere</span>
+    </a>
+
+    <div class="nav-links">
+      <div class="nav-item">
+        <span class="nav-link" onclick="toggleDropdown('dropdownFindMentors')">
+          Find Mentors <i data-lucide="chevron-down" class="nav-arrow-icon"></i>
+        </span>
+        <div class="nav-dropdown" id="dropdownFindMentors">
+          <a class="dropdown-item" onclick="comingSoon('Browse All Mentors')"><i data-lucide="search"></i> Browse All Mentors</a>
+          <a class="dropdown-item" onclick="comingSoon('Top Rated')"><i data-lucide="star"></i> Top Rated</a>
+          <a class="dropdown-item" onclick="comingSoon('Budget Friendly')"><i data-lucide="wallet"></i> Budget Friendly</a>
+          <a class="dropdown-item" onclick="comingSoon('New Mentors')"><i data-lucide="sparkles"></i> New Mentors</a>
+        </div>
+      </div>
+
+      <div class="nav-item">
+        <span class="nav-link" onclick="toggleDropdown('dropdownBecomeMentor')">
+          Become a Mentor <i data-lucide="chevron-down" class="nav-arrow-icon"></i>
+        </span>
+        <div class="nav-dropdown" id="dropdownBecomeMentor">
+          <a class="dropdown-item" onclick="comingSoon('How it Works')"><i data-lucide="info"></i> How it Works</a>
+          <a class="dropdown-item" onclick="comingSoon('Requirements')"><i data-lucide="clipboard-list"></i> Requirements</a>
+          <a class="dropdown-item" onclick="comingSoon('Earnings')"><i data-lucide="trending-up"></i> Earnings</a>
+          <a class="dropdown-item" href="signup.html"><i data-lucide="rocket"></i> Apply Now</a>
+        </div>
+      </div>
+
+      <div class="nav-item">
+        <span class="nav-link" onclick="toggleDropdown('dropdownHowItWorks')">
+          How it Works <i data-lucide="chevron-down" class="nav-arrow-icon"></i>
+        </span>
+        <div class="nav-dropdown" id="dropdownHowItWorks">
+          <a class="dropdown-item" onclick="openModal('For Students')"><i data-lucide="graduation-cap"></i> For Students</a>
+          <a class="dropdown-item" onclick="openModal('For Mentors')"><i data-lucide="users"></i> For Mentors</a>
+          <a class="dropdown-item" onclick="openModal('Booking Process')"><i data-lucide="calendar"></i> Booking Process</a>
+          <a class="dropdown-item" onclick="openModal('FAQs')"><i data-lucide="help-circle"></i> FAQs</a>
+        </div>
+      </div>
+    </div>
+
+    <div class="nav-actions">
+      <div id="navAuthButtons" style="display:flex; gap:10px;">
+        <button class="btn-outline" onclick="window.location.href='login.html'">Log In</button>
+        <button class="btn-gold" onclick="window.location.href='signup.html'">Sign Up Free</button>
+      </div>
+      <div id="navUserMenu" style="display:none; align-items:center; gap:12px;">
+        <span id="navUserName" class="nav-username"></span>
+        <button class="btn-outline" type="button" onclick="window.location.href='dashboard.html'">Dashboard</button>
+        <button class="btn-outline" onclick="handleLogout()">Log Out</button>
+      </div>
+    </div>
+  </nav>
+
+  <!-- ── Hero ── -->
+  <section class="hero">
+    <div class="hero-badge">
+      <i data-lucide="sparkles"></i>
+      The premium mentor platform for ambitious learners
+      <i data-lucide="sparkles"></i>
+    </div>
+    <h1 class="hero-title">
+      Connect with mentors<br/>
+      <span class="text-gold">who shape careers.</span>
+    </h1>
+    <p class="hero-subtitle">Find your perfect mentor, book personalized sessions, and accelerate your journey with expert guidance.</p>
+
+    <div class="search-bar">
+      <i data-lucide="search" class="search-icon-svg"></i>
+      <input type="text" id="searchInput" placeholder="Search by skill, role, or name..." autocomplete="off"/>
+      <button class="btn-gold" onclick="searchAndScroll()">Search</button>
+    </div>
+
+    <div class="tag-list" id="tagList"></div>
+
+    <div class="stats">
+      <div class="stat"><span class="stat-num">500+</span><span class="stat-label">Expert Mentors</span></div>
+      <div class="stat"><span class="stat-num">12K+</span><span class="stat-label">Students Guided</span></div>
+      <div class="stat"><span class="stat-num">4.9</span><span class="stat-label">Avg Rating</span></div>
+    </div>
+  </section>
+
+  <!-- ── Featured Mentors ── -->
+  <section class="mentors-section" id="mentorsSection">
+    <div class="section-header">
+      <div>
+        <p class="section-eyebrow"><i data-lucide="gem"></i> Handpicked for you</p>
+        <h2>Featured Mentors</h2>
+      </div>
+      <div class="domain-filters" id="domainFilters"></div>
+    </div>
+    <div class="mentors-grid" id="mentorsGrid"></div>
+  </section>
+
+  <!-- ── How it Works ── -->
+  <section class="how-it-works">
+    <p class="section-eyebrow center"><i data-lucide="zap"></i> Simple process</p>
+    <h2 class="center">How IdeaSphere Works</h2>
+    <p class="section-sub center">Four steps to connect with your perfect mentor</p>
+    <div class="steps-grid" id="stepsGrid"></div>
+  </section>
+
+  <!-- ── CTA ── -->
+  <section class="cta-section">
+    <div class="cta-card glass-card">
+      <i data-lucide="award" class="cta-icon"></i>
+      <h2 class="text-gold">Ready to find your mentor?</h2>
+      <p>Join 12,000+ students already getting personalized guidance on IdeaSphere.</p>
+      <div class="cta-buttons">
+        <button class="btn-gold btn-lg" onclick="window.location.href='signup.html'">Get Started Free</button>
+        <button class="btn-outline btn-lg">Browse Mentors</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Footer ── -->
+  <footer class="footer">
+    <div class="footer-logo">
+      <div class="logo-icon-sm"><i data-lucide="lightbulb"></i></div>
+      <span>IdeaSphere © 2026</span>
+    </div>
+    <div class="footer-links">
+      <a href="#">Privacy</a>
+      <a href="#">Terms</a>
+      <a href="#">Contact</a>
+    </div>
+  </footer>
+
+  <!-- Toast -->
+  <div id="toast" class="toast"></div>
+
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+  <script src="firebase-config.js"></script>
+  <script src="config.js"></script>
+  <script src="api.js"></script>
+  <script src="index-auth.js"></script>
+  <script src="data.js"></script>
+  <script src="app.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r121/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/vanta@latest/dist/vanta.dots.min.js"></script>
+  <script>
+    lucide.createIcons();
+    VANTA.DOTS({
+      el: "#vanta-bg",
+      mouseControls: true,
+      touchControls: true,
+      gyroControls: false,
+      minHeight: 200,
+      minWidth: 200,
+      scale: 1.0,
+      scaleMobile: 1.0,
+      color: 0xD4AF37,        // gold dots
+      color2: 0x1a3a6e,       // midnight blue dots
+      backgroundColor: 0x060B18,
+      size: 2.8,
+      spacing: 28,
+      showLines: true
+    });
+  </script>
+</body>
+</html>
