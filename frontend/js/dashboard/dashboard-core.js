@@ -72,9 +72,12 @@ async function loadUsers() {
     allUsers = data.users || [];
     const mentors = allUsers.filter((u) => u.role === "mentor").length;
     const students = allUsers.filter((u) => u.role === "student").length;
-    document.getElementById("statTotal").textContent = String(allUsers.length);
-    document.getElementById("statMentors").textContent = String(mentors);
-    document.getElementById("statStudents").textContent = String(students);
+    const totalEl = document.getElementById("statTotal");
+    const mentorsEl = document.getElementById("statMentors");
+    const studentsEl = document.getElementById("statStudents");
+    if (totalEl) totalEl.textContent = String(allUsers.length);
+    if (mentorsEl) mentorsEl.textContent = String(mentors);
+    if (studentsEl) studentsEl.textContent = String(students);
     renderNetwork(allUsers);
   } catch (e) {
     showToast(e.message || "Could not load directory", "error");

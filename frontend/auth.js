@@ -112,9 +112,11 @@ async function handleSignup(e) {
     const user = userCredential.user;
 
     await user.updateProfile({ displayName: `${firstName} ${lastName}` });
+    const idToken = await user.getIdToken(true);
 
     // Save to MongoDB with proper API layer
     const registerRes = await mcPost("/api/users/register", {
+      idToken,
       name: `${firstName} ${lastName}`,
       email,
       firebaseUID: user.uid,
@@ -131,11 +133,13 @@ async function handleSignup(e) {
     localStorage.setItem("mc_email", email);
     localStorage.setItem("mc_role", selectedRole);
 
-    // Sync JWT
-    try {
-      await syncMcJwt();
-    } catch (err) {
-      console.warn("[AUTH] JWT sync during signup failed:", err);
+    const sessionToken = await syncMcJwt();
+    if (!sessionToken) {
+      localStorage.removeItem("mc_jwt");
+      try { await auth.signOut(); } catch (_) {}
+      setLoading("signupBtnText", "signupSpinner", false);
+      showToast("Could not create a secure session. Please try again.", "error");
+      return;
     }
 
     showToast("Signup successful! Welcome aboard 🎉");
@@ -173,6 +177,20 @@ async function handleLogin(e) {
     const userCredential = await auth.signInWithEmailAndPassword(email, password);
     const user = userCredential.user;
 
+    // Backend session is required before entering the app.
+    const sessionToken = await syncMcJwt();
+    if (!sessionToken) {
+      localStorage.removeItem("mc_jwt");
+      try {
+        await auth.signOut();
+      } catch (signOutErr) {
+        console.warn("[AUTH] Firebase sign-out after session failure failed:", signOutErr);
+      }
+      setLoading(textId, spinId, false);
+      showToast("Could not create a secure session. Please try again.", "error");
+      return;
+    }
+
     // Fetch user profile from backend
     const profileRes = await mcGet(`/api/users/${user.uid}`);
     
@@ -186,13 +204,6 @@ async function handleLogin(e) {
       localStorage.setItem("mc_uid", user.uid);
       localStorage.setItem("mc_name", user.displayName || "User");
       localStorage.setItem("mc_email", email);
-    }
-
-    // Sync JWT
-    try {
-      await syncMcJwt();
-    } catch (err) {
-      console.warn("[AUTH] JWT sync during login failed:", err);
     }
 
     showToast("Login successful! Redirecting…");

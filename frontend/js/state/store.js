@@ -9,6 +9,7 @@ const state = {
   sessionReady: false,
   authHydrated: false,
   authError: null,
+  jwtVersion: 0,
   theme: typeof localStorage !== "undefined" ? localStorage.getItem("mc_theme") || "dark" : "dark",
   mentors: [],
   activeChatUid: null,
@@ -32,7 +33,11 @@ export function getState() {
 }
 
 export function setState(partial) {
+  const hadJwt = state.jwt;
   Object.assign(state, partial);
+  if (Object.prototype.hasOwnProperty.call(partial, "jwt") && partial.jwt !== hadJwt) {
+    state.jwtVersion += 1;
+  }
   emit();
 }
 
@@ -49,7 +54,8 @@ export function persistSessionPrefs() {
     if (state.profile?.email) localStorage.setItem("mc_email", state.profile.email);
     if (state.profile?.role) localStorage.setItem("mc_role", state.profile.role);
     if (state.profile?.firebaseUID) localStorage.setItem("mc_uid", state.profile.firebaseUID);
-    localStorage.removeItem("mc_admin");
+    if (state.profile?.isAdmin) localStorage.setItem("mc_admin", "1");
+    else localStorage.removeItem("mc_admin");
   } catch {
     /* storage blocked */
   }

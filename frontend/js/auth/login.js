@@ -1,5 +1,6 @@
 import { redirectIfAuthed } from "./guards.js";
 import { getAuth } from "./auth-state.esm.js";
+import { syncBackendJwt } from "./session-sync.js";
 import { showToast } from "../utils/toast.js";
 import { setLoading, showFieldErr, clearFieldErr } from "./auth-ui.js";
 
@@ -22,29 +23,24 @@ async function handleLogin(e) {
   setLoading(textId, spinId, true);
   try {
     const cred = await getAuth().signInWithEmailAndPassword(email, password);
-    try {
-      const profileRes = await mcGet(`/api/users/${cred.user.uid}`);
-      if (profileRes.ok && profileRes.data && profileRes.data.user) {
-        localStorage.setItem("mc_uid", cred.user.uid);
-        localStorage.setItem("mc_name", profileRes.data.user.name || "");
-        localStorage.setItem("mc_email", profileRes.data.user.email || "");
-        localStorage.setItem("mc_role", profileRes.data.user.role || "student");
-      } else {
-        localStorage.setItem("mc_uid", cred.user.uid);
-        localStorage.setItem("mc_name", cred.user.displayName || "User");
-        localStorage.setItem("mc_email", email);
-      }
-    } catch (e) {
-      localStorage.setItem("mc_uid", cred.user.uid);
-      localStorage.setItem("mc_name", cred.user.displayName || "User");
-      localStorage.setItem("mc_email", email);
-    }
-    }
-    showToast("Login successful! Redirecting…");
+    const session = await syncBackendJwt(cred.user);
+    if (!session?.token) throw new Error("Session exchange failed");
+
+    const user = session.user || {};
+    localStorage.setItem("mc_uid", cred.user.uid);
+    localStorage.setItem("mc_name", user.name || cred.user.displayName || "User");
+    localStorage.setItem("mc_email", user.email || email);
+    localStorage.setItem("mc_role", user.role || "student");
+    if (user.isAdmin) localStorage.setItem("mc_admin", "1");
+    else localStorage.removeItem("mc_admin");
+
+    showToast("Login successful! Redirecting...");
     setTimeout(() => {
       window.location.href = "dashboard.html";
     }, 500);
   } catch (err) {
+    try { await getAuth().signOut(); } catch (_) {}
+    localStorage.removeItem("mc_jwt");
     showToast(err.message || "Login failed", "error");
   } finally {
     setLoading(textId, spinId, false);

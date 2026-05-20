@@ -4,7 +4,7 @@ const { body, param, validationResult } = require("express-validator");
 const Booking = require("../models/Booking");
 const User = require("../models/User");
 const Notification = require("../models/Notification");
-const { requireAuth } = require("../middleware/authMiddleware");
+const { requireAuth, requireStudent } = require("../middleware/authMiddleware");
 const { sendBookingConfirmation } = require("../services/emailService");
 
 const router = express.Router();
@@ -21,6 +21,7 @@ async function notifyUser(uid, payload) {
 router.post(
   "/",
   requireAuth,
+  requireStudent,
   body("mentorFirebaseUID").isString().trim().isLength({ min: 5, max: 128 }),
   body("startTime").isISO8601(),
   body("endTime").isISO8601(),
@@ -168,7 +169,7 @@ router.patch(
     const isMentor = booking.mentorFirebaseUID === uid;
 
     if (req.body.status === "confirmed" || req.body.status === "rejected") {
-      if (!isMentor) return res.status(403).json({ success: false, error: "Mentor only" });
+      if (!isMentor || req.auth.role !== "mentor") return res.status(403).json({ success: false, error: "Mentor only" });
       if (!["pending"].includes(booking.status)) {
         return res.status(400).json({ success: false, error: "Invalid state transition" });
       }
@@ -252,7 +253,7 @@ router.patch(
 
     const booking = await Booking.findById(req.params.id);
     if (!booking) return res.status(404).json({ success: false, error: "Not found" });
-    if (booking.mentorFirebaseUID !== req.auth.uid) {
+    if (booking.mentorFirebaseUID !== req.auth.uid || req.auth.role !== "mentor") {
       return res.status(403).json({ success: false, error: "Mentor only" });
     }
     if (!["pending", "confirmed"].includes(booking.status)) {

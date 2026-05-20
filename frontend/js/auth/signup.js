@@ -1,5 +1,6 @@
 import { redirectIfAuthed } from "./guards.js";
 import { getAuth } from "./auth-state.esm.js";
+import { syncBackendJwt } from "./session-sync.js";
 import { showToast } from "../utils/toast.js";
 import { setLoading, showFieldErr, clearFieldErr } from "./auth-ui.js";
 
@@ -89,8 +90,10 @@ async function handleSignup(e) {
   try {
     const cred = await getAuth().createUserWithEmailAndPassword(email, password);
     await cred.user.updateProfile({ displayName: `${firstName} ${lastName}` });
+    const idToken = await cred.user.getIdToken(true);
 
     const res = await mcPost("/api/users/register", {
+      idToken,
       name: `${firstName} ${lastName}`,
       email,
       firebaseUID: cred.user.uid,
@@ -103,11 +106,16 @@ async function handleSignup(e) {
     localStorage.setItem("mc_email", email);
     localStorage.setItem("mc_role", selectedRole);
 
+    const session = await syncBackendJwt(cred.user);
+    if (!session?.token) throw new Error("Session exchange failed");
+
     showToast("Signup successful! Welcome aboard");
     setTimeout(() => {
       window.location.href = "dashboard.html";
     }, 600);
   } catch (err) {
+    try { await getAuth().signOut(); } catch (_) {}
+    localStorage.removeItem("mc_jwt");
     showToast(err.message || "Signup failed", "error");
   } finally {
     setLoading("signupBtnText", "signupSpinner", false);

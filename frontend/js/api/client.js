@@ -1,5 +1,6 @@
 import { logger } from "../utils/logger.js";
-import { getState } from "../state/store.js";
+import { getState, setState, clearStoredSession } from "../state/store.js";
+import { waitForAuthReady } from "../auth/auth-state.esm.js";
 import { syncBackendJwt } from "../auth/session-sync.js";
 
 export class ApiError extends Error {
@@ -8,6 +9,33 @@ export class ApiError extends Error {
     this.status = status;
     this.body = body;
   }
+}
+
+let refreshPromise = null;
+
+function isPublicApi(path) {
+  return (
+    path.startsWith("/api/auth/session") ||
+    path.startsWith("/api/users/register") ||
+    path.startsWith("/api/users/mentors") ||
+    path.startsWith("/api/reviews/mentor/")
+  );
+}
+
+async function ensureAuthReady(path, options) {
+  if (options.skipAuthWait || options.authRequired === false || isPublicApi(path)) return;
+  if (!getState().authHydrated) {
+    await waitForAuthReady(options.authTimeout || 10000);
+  }
+}
+
+async function refreshJwtOnce(user) {
+  if (!refreshPromise) {
+    refreshPromise = syncBackendJwt(user).finally(() => {
+      refreshPromise = null;
+    });
+  }
+  return refreshPromise;
 }
 
 function headersFor(body, extra) {
@@ -33,7 +61,9 @@ export async function apiFetch(path, options = {}) {
   const base = window.MC_API || "";
   if (!base) throw new ApiError("API not configured", 0, null);
 
-  const { skipAuthRetry, _retried, body, ...rest } = options;
+  await ensureAuthReady(path, options);
+
+  const { skipAuthRetry, skipAuthWait, authRequired, authTimeout, _retried, body, ...rest } = options;
   const isJsonBody = body && typeof body === "object" && !(body instanceof FormData);
   const payload = isJsonBody ? JSON.stringify(body) : body;
 
@@ -55,10 +85,12 @@ export async function apiFetch(path, options = {}) {
       (window.firebase && window.firebase.auth && window.firebase.auth().currentUser);
     if (u) {
       try {
-        await syncBackendJwt(u);
+        await refreshJwtOnce(u);
         return apiFetch(path, { ...options, _retried: true });
       } catch (e) {
         logger.warn("401 refresh failed", e);
+        clearStoredSession();
+        setState({ jwt: null, profile: null, sessionReady: false, authError: e.message || "Session expired" });
       }
     }
   }

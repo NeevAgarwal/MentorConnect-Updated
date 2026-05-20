@@ -8,24 +8,37 @@ let authStateReady = false;
 let currentAuthUser = null;
 let currentMcUser = null;
 let authStateCallbacks = [];
+let authInitPromise = null;
+
+function clearAuthStorage() {
+  currentAuthUser = null;
+  currentMcUser = null;
+  if (typeof mcGlobalJwt !== "undefined") mcGlobalJwt = null;
+  localStorage.removeItem("mc_jwt");
+  localStorage.removeItem("mc_uid");
+  localStorage.removeItem("mc_name");
+  localStorage.removeItem("mc_role");
+  localStorage.removeItem("mc_email");
+  localStorage.removeItem("mc_admin");
+}
 
 /**
  * Initialize auth and wait for state to be ready
  * Call this early on every protected page
  */
 async function initAuthState() {
-  return new Promise((resolve) => {
+  if (authInitPromise) return authInitPromise;
+  authInitPromise = new Promise((resolve) => {
     if (authStateReady) {
       resolve({ user: currentAuthUser, mcUser: currentMcUser });
       return;
     }
 
-    const unsubscribe = auth.onAuthStateChanged(async (firebaseUser) => {
+    let unsubscribe = () => {};
+    unsubscribe = auth.onAuthStateChanged(async (firebaseUser) => {
       try {
         if (!firebaseUser) {
-          // Not logged in - redirect to login
-          currentAuthUser = null;
-          currentMcUser = null;
+          clearAuthStorage();
           authStateReady = true;
           notifyAuthStateCallbacks();
           unsubscribe();
@@ -41,18 +54,33 @@ async function initAuthState() {
         // Firebase user exists
         currentAuthUser = firebaseUser;
 
-        // Sync with backend to get JWT
         const synced = await syncMcJwt();
-        if (synced) {
-          // Try to fetch user profile
-          const profileRes = await mcGet(`/api/users/${firebaseUser.uid}`);
-          if (profileRes.ok && profileRes.data.user) {
-            currentMcUser = profileRes.data.user;
-            localStorage.setItem("mc_uid", firebaseUser.uid);
-            localStorage.setItem("mc_name", profileRes.data.user.name || firebaseUser.displayName || "User");
-            localStorage.setItem("mc_role", profileRes.data.user.role || "student");
-            localStorage.setItem("mc_email", profileRes.data.user.email || firebaseUser.email || "");
+        if (!synced) {
+          clearAuthStorage();
+          try { await auth.signOut(); } catch (_) {}
+          authStateReady = true;
+          notifyAuthStateCallbacks();
+          unsubscribe();
+          resolve(null);
+          if (!isPublicPage()) {
+            window.location.href = "login.html?session=expired";
           }
+          return;
+        }
+
+        const profileRes = await mcGet(`/api/users/${firebaseUser.uid}`, { skipAuthWait: true });
+        if (profileRes.ok && profileRes.data.user) {
+          currentMcUser = profileRes.data.user;
+        } else if (mcGlobalUser) {
+          currentMcUser = mcGlobalUser;
+        }
+        if (currentMcUser) {
+          localStorage.setItem("mc_uid", firebaseUser.uid);
+          localStorage.setItem("mc_name", currentMcUser.name || firebaseUser.displayName || "User");
+          localStorage.setItem("mc_role", currentMcUser.role || "student");
+          localStorage.setItem("mc_email", currentMcUser.email || firebaseUser.email || "");
+          if (currentMcUser.isAdmin) localStorage.setItem("mc_admin", "1");
+          else localStorage.removeItem("mc_admin");
         }
 
         authStateReady = true;
@@ -61,13 +89,19 @@ async function initAuthState() {
         resolve({ user: currentAuthUser, mcUser: currentMcUser });
       } catch (err) {
         console.error("[AUTH] Error initializing auth state:", err);
+        clearAuthStorage();
         authStateReady = true;
         notifyAuthStateCallbacks();
         unsubscribe();
         resolve(null);
+        if (!isPublicPage()) {
+          window.location.href = "login.html?session=expired";
+        }
       }
     });
   });
+  window.MC_AUTH_READY = authInitPromise;
+  return authInitPromise;
 }
 
 /**
@@ -121,15 +155,7 @@ function getCurrentMcUser() {
 async function logoutUser() {
   try {
     await auth.signOut();
-    currentAuthUser = null;
-    currentMcUser = null;
-    mcGlobalJwt = null;
-    localStorage.removeItem("mc_jwt");
-    localStorage.removeItem("mc_uid");
-    localStorage.removeItem("mc_name");
-    localStorage.removeItem("mc_role");
-    localStorage.removeItem("mc_email");
-    localStorage.removeItem("mc_admin");
+    clearAuthStorage();
     notifyAuthStateCallbacks();
     return true;
   } catch (err) {

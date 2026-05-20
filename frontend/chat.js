@@ -2,6 +2,28 @@ let socket = null;
 let activeWith = null;
 let typingTimer = null;
 let socketConnected = false;
+let socketRefreshing = false;
+
+function currentJwt() {
+  return localStorage.getItem("mc_jwt") || "";
+}
+
+async function refreshSocketJwtAndReconnect() {
+  if (!socket || socketRefreshing) return;
+  socketRefreshing = true;
+  try {
+    const token = await syncMcJwt();
+    if (token) {
+      socket.auth = { ...(socket.auth || {}), token };
+      socket.disconnect();
+      socket.connect();
+    }
+  } catch (err) {
+    console.warn("[CHAT] Socket JWT refresh failed:", err);
+  } finally {
+    socketRefreshing = false;
+  }
+}
 
 function esc(s) {
   return String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;");
@@ -83,7 +105,7 @@ async function selectChat(uid, name) {
 
 function connectSocket() {
   const base = window.MC_API || "http://localhost:5000";
-  const token = localStorage.getItem("mc_jwt");
+  const token = currentJwt();
   
   if (!token) {
     console.warn("[CHAT] No JWT token for socket connection");
@@ -117,6 +139,14 @@ function connectSocket() {
 
     socket.on("connect_error", (err) => {
       console.error("[CHAT] Socket connection error:", err);
+      if (/unauthorized|invalid|expired/i.test(err?.message || "")) {
+        refreshSocketJwtAndReconnect();
+      }
+    });
+
+    socket.io.on("reconnect_attempt", () => {
+      const next = currentJwt();
+      if (next) socket.auth = { ...(socket.auth || {}), token: next };
     });
 
     socket.on("chat:message", (payload) => {
@@ -180,6 +210,16 @@ document.addEventListener("DOMContentLoaded", async () => {
   try {
     await loadSidebar();
     connectSocket();
+    if (!window.__mcChatSessionListener) {
+      window.__mcChatSessionListener = true;
+      window.addEventListener("mc:session", () => {
+        if (!socket) return;
+        const token = currentJwt();
+        if (!token) return;
+        socket.auth = { ...(socket.auth || {}), token };
+        if (!socket.connected) socket.connect();
+      });
+    }
 
     const deep = params();
     if (deep) {
@@ -204,8 +244,8 @@ document.addEventListener("DOMContentLoaded", async () => {
     });
 
     msgInput.addEventListener("input", () => {
-      if (!socket || !socketConnected || !activeWith || !getAuth().currentUser) return;
-      const cid = [getAuth().currentUser.uid, activeWith].sort().join("__");
+      if (!socket || !socketConnected || !activeWith || !auth.currentUser) return;
+      const cid = [auth.currentUser.uid, activeWith].sort().join("__");
       socket.emit("typing", { conversationId: cid, typing: true });
 
       clearTimeout(typingTimer);

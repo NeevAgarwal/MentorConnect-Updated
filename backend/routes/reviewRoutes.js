@@ -3,7 +3,7 @@ const { body, param, validationResult } = require("express-validator");
 const Review = require("../models/Review");
 const User = require("../models/User");
 const Booking = require("../models/Booking");
-const { requireAuth } = require("../middleware/authMiddleware");
+const { requireAuth, requireStudent } = require("../middleware/authMiddleware");
 
 const router = express.Router();
 
@@ -43,6 +43,7 @@ router.get("/mentor/:mentorFirebaseUID", param("mentorFirebaseUID").isString(), 
 router.post(
   "/",
   requireAuth,
+  requireStudent,
   body("mentorFirebaseUID").isString().trim(),
   body("rating").isInt({ min: 1, max: 5 }),
   body("comment").optional().isString().isLength({ max: 1200 }),
@@ -56,6 +57,10 @@ router.post(
 
     if (mentorFirebaseUID === studentFirebaseUID) {
       return res.status(400).json({ success: false, error: "Invalid" });
+    }
+    const mentor = await User.findOne({ firebaseUID: mentorFirebaseUID, role: "mentor", banned: { $ne: true } }).lean();
+    if (!mentor) {
+      return res.status(404).json({ success: false, error: "Mentor not found" });
     }
 
     if (bookingId) {

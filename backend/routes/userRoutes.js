@@ -2,35 +2,86 @@ const express = require("express");
 const { body, param, query, validationResult } = require("express-validator");
 const User = require("../models/User");
 const { optionalAuth, requireAuth, requireSelfOrAdmin } = require("../middleware/authMiddleware");
+const { verifyFirebaseIdToken } = require("../services/firebaseVerify");
 const { sendWelcomeEmail } = require("../services/emailService");
 
 const router = express.Router();
 
 router.post(
   "/register",
+  body("idToken").isString().isLength({ min: 20, max: 12000 }),
   body("name").isString().trim().isLength({ min: 1, max: 120 }),
   body("email").isEmail().normalizeEmail(),
-  body("firebaseUID").isString().trim().isLength({ min: 5, max: 128 }),
+  body("firebaseUID").optional().isString().trim().isLength({ min: 5, max: 128 }),
   body("role").optional().isIn(["student", "mentor"]),
   async (req, res) => {
     const errors = validationResult(req);
-    if (!errors.isEmpty()) return res.status(400).json({ success: false, errors: errors.array() });
+    if (!errors.isEmpty()) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid registration request",
+        error: "Invalid registration request",
+        code: "VALIDATION_ERROR",
+      });
+    }
 
-    const { name, email, firebaseUID, role } = req.body;
+    const { name, email, role } = req.body;
+    let verified;
+    try {
+      verified = await verifyFirebaseIdToken(req.body.idToken, process.env.FIREBASE_PROJECT_ID || "ideasphere-web");
+    } catch (err) {
+      return res.status(err.status || 401).json({
+        success: false,
+        message: err.message || "Invalid Firebase token",
+        error: err.message || "Invalid Firebase token",
+        code: err.code || "FIREBASE_TOKEN_INVALID",
+      });
+    }
+    const firebaseUID = verified.uid;
+    if (req.body.firebaseUID && req.body.firebaseUID !== firebaseUID) {
+      return res.status(403).json({
+        success: false,
+        message: "Firebase user mismatch",
+        error: "Firebase user mismatch",
+        code: "FIREBASE_UID_MISMATCH",
+      });
+    }
+    if (verified.email && String(email).toLowerCase() !== String(verified.email).toLowerCase()) {
+      return res.status(403).json({
+        success: false,
+        message: "Firebase email mismatch",
+        error: "Firebase email mismatch",
+        code: "FIREBASE_EMAIL_MISMATCH",
+      });
+    }
     const adminEmails = (process.env.ADMIN_EMAILS || "")
       .split(",")
       .map((s) => s.trim().toLowerCase())
       .filter(Boolean);
-    const isAdmin = adminEmails.includes(String(email).toLowerCase());
+    const userEmail = verified.email || email;
+    const isAdmin = adminEmails.includes(String(userEmail).toLowerCase());
 
     const existing = await User.findOne({ firebaseUID });
     if (existing) {
-      return res.status(200).json({ success: true, message: "User already exists", user: existing });
+      if (existing.banned) {
+        return res.status(403).json({
+          success: false,
+          message: "Account suspended",
+          error: "Account suspended",
+          code: "USER_BANNED",
+        });
+      }
+      return res.status(200).json({
+        success: true,
+        message: "User already exists",
+        data: { user: existing },
+        user: existing,
+      });
     }
 
     const newUser = new User({
       name,
-      email,
+      email: userEmail,
       firebaseUID,
       role: role === "mentor" ? "mentor" : "student",
       isAdmin,
@@ -45,6 +96,7 @@ router.post(
     res.status(201).json({
       success: true,
       message: "User registered successfully",
+      data: { user: newUser },
       user: newUser,
     });
   }
@@ -153,21 +205,22 @@ router.get(
   }
 );
 
-router.get("/", async (_req, res) => {
+router.get("/", requireAuth, async (_req, res) => {
   const users = await User.find({ banned: { $ne: true } }).sort({ createdAt: -1 }).limit(300).lean();
   res.json({ success: true, users });
 });
 
-router.get("/:firebaseUID", param("firebaseUID").isString(), async (req, res) => {
+router.get("/:firebaseUID", requireAuth, param("firebaseUID").isString(), async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) return res.status(400).json({ success: false, errors: errors.array() });
-  const user = await User.findOne({ firebaseUID: req.params.firebaseUID });
+  const user = await User.findOne({ firebaseUID: req.params.firebaseUID, banned: { $ne: true } });
   if (!user) return res.status(404).json({ success: false, error: "User not found" });
   res.json({ success: true, user });
 });
 
 router.post(
   "/:firebaseUID/profile-view",
+  requireAuth,
   param("firebaseUID").isString(),
   async (req, res) => {
     const errors = validationResult(req);

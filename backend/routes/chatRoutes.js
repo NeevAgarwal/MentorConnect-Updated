@@ -45,10 +45,12 @@ router.get("/conversations", requireAuth, async (req, res) => {
 router.get(
   "/messages",
   requireAuth,
-  query("withUser").isString().trim(),
+  query("withUser").isString().trim().isLength({ min: 5, max: 128 }),
   async (req, res) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) return res.status(400).json({ success: false, errors: errors.array() });
+    const otherUser = await User.findOne({ firebaseUID: req.query.withUser, banned: { $ne: true } }).lean();
+    if (!otherUser) return res.status(404).json({ success: false, error: "Recipient not found" });
     const cid = conversationIdFor(req.auth.uid, req.query.withUser);
     const list = await Message.find({ conversationId: cid }).sort({ createdAt: 1 }).limit(200).lean();
     await Message.updateMany(
@@ -62,7 +64,7 @@ router.get(
 router.post(
   "/messages",
   requireAuth,
-  body("toFirebaseUID").isString().trim(),
+  body("toFirebaseUID").isString().trim().isLength({ min: 5, max: 128 }),
   body("text").isString().isLength({ min: 1, max: 4000 }),
   async (req, res) => {
     const errors = validationResult(req);
@@ -71,6 +73,8 @@ router.post(
     if (toFirebaseUID === req.auth.uid) {
       return res.status(400).json({ success: false, error: "Invalid recipient" });
     }
+    const recipient = await User.findOne({ firebaseUID: toFirebaseUID, banned: { $ne: true } }).lean();
+    if (!recipient) return res.status(404).json({ success: false, error: "Recipient not found" });
     const cid = conversationIdFor(req.auth.uid, toFirebaseUID);
     const msg = await Message.create({
       conversationId: cid,

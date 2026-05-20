@@ -408,6 +408,11 @@ document.addEventListener("DOMContentLoaded", () => {
     e.stopPropagation();
     toggleNotifDropdown();
   });
+  if (!window.__mcNotifRecover) {
+    window.__mcNotifRecover = true;
+    window.addEventListener("mc:session", () => loadNotificationsBadge());
+    window.addEventListener("focus", () => loadNotificationsBadge());
+  }
 
   // Close notification dropdown when clicking outside
   document.addEventListener("click", (e) => {

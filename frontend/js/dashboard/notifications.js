@@ -72,4 +72,9 @@ export function initNotifications() {
       }
     });
   }
+  if (!window.__mcNotifRecover) {
+    window.__mcNotifRecover = true;
+    window.addEventListener("mc:session", () => refreshNotificationBadge());
+    window.addEventListener("focus", () => refreshNotificationBadge());
+  }
 }

@@ -1,4 +1,5 @@
-import { getState } from "../state/store.js";
+import { getState, subscribe } from "../state/store.js";
+import { syncBackendJwt } from "../auth/session-sync.js";
 import { logger } from "../utils/logger.js";
 
 export function createChatSocket(handlers) {
@@ -21,31 +22,74 @@ export function createChatSocket(handlers) {
     reconnectionDelay: 1200,
   });
 
-  const setStatus = (t, kind) => {
-    handlers.onConnectionState?.(t, kind);
+  let disposed = false;
+  let refreshing = false;
+
+  const setStatus = (t, kind) => handlers.onConnectionState?.(t, kind);
+  const currentToken = () => getState().jwt || localStorage.getItem("mc_jwt") || "";
+  const updateSocketToken = () => {
+    const next = currentToken();
+    if (next) socket.auth = { ...(socket.auth || {}), token: next };
+    return next;
+  };
+
+  const reconnectWithFreshToken = async () => {
+    if (disposed || refreshing) return;
+    refreshing = true;
+    try {
+      const user = getState().firebaseUser || (window.firebase?.auth && window.firebase.auth().currentUser);
+      if (user) await syncBackendJwt(user);
+      if (updateSocketToken()) {
+        socket.disconnect();
+        socket.connect();
+      }
+    } catch (e) {
+      logger.warn("socket token refresh failed", e);
+    } finally {
+      refreshing = false;
+    }
   };
 
   socket.on("connect", () => setStatus("Live", "ok"));
-  socket.on("disconnect", (reason) => setStatus("Disconnected", "warn"));
+  socket.on("disconnect", () => setStatus("Disconnected", "warn"));
   socket.on("connect_error", (err) => {
     logger.warn("socket connect_error", err?.message);
-    setStatus("Reconnecting…", "warn");
+    setStatus("Reconnecting...", "warn");
+    if (/unauthorized|invalid|expired/i.test(err?.message || "")) {
+      reconnectWithFreshToken();
+    }
   });
-  socket.on("reconnect_attempt", () => setStatus("Reconnecting…", "warn"));
-  socket.on("reconnect_failed", () => setStatus("Offline", "err"));
+  socket.io.on("reconnect_attempt", () => {
+    updateSocketToken();
+    setStatus("Reconnecting...", "warn");
+  });
+  socket.io.on("reconnect_failed", () => setStatus("Offline", "err"));
 
-  socket.on("chat:message", (payload) => {
-    handlers.onChatMessage?.(payload);
+  socket.on("chat:message", (payload) => handlers.onChatMessage?.(payload));
+  socket.on("chat:typing", (payload) => handlers.onTyping?.(payload));
+
+  const unsubStore = subscribe((s) => {
+    if (disposed || !s.jwt) return;
+    if (socket.auth?.token !== s.jwt) {
+      socket.auth = { ...(socket.auth || {}), token: s.jwt };
+      if (!socket.connected) socket.connect();
+    }
   });
-  socket.on("chat:typing", (payload) => {
-    handlers.onTyping?.(payload);
-  });
+  const onSession = () => {
+    if (disposed || !updateSocketToken()) return;
+    if (!socket.connected) socket.connect();
+  };
+  window.addEventListener("mc:session", onSession);
 
   return {
     socket,
     disconnect() {
       try {
+        disposed = true;
+        unsubStore();
+        window.removeEventListener("mc:session", onSession);
         socket.removeAllListeners();
+        socket.io?.removeAllListeners?.();
         socket.disconnect();
       } catch (_) {
         /* ignore */

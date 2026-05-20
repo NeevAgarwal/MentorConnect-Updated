@@ -48,6 +48,16 @@ const limiter = rateLimit({
 });
 app.use("/api/", limiter);
 
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: Number(process.env.AUTH_RATE_LIMIT_MAX || 80),
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, message: "Too many authentication attempts", error: "Too many authentication attempts" },
+});
+app.use("/api/auth", authLimiter);
+app.use("/api/users/register", authLimiter);
+
 const uploadsPath = path.join(__dirname, "uploads");
 app.use("/uploads", express.static(uploadsPath));
 
@@ -66,13 +76,13 @@ app.use("/api/upload", uploadRoutes);
 
 app.use((err, _req, res, _next) => {
   if (err && err.name === "MulterError") {
-    return res.status(400).json({ success: false, error: err.message });
+    return res.status(400).json({ success: false, message: err.message, error: err.message });
   }
   if (err && err.message === "Only images and PDF allowed") {
-    return res.status(400).json({ success: false, error: err.message });
+    return res.status(400).json({ success: false, message: err.message, error: err.message });
   }
   console.error(err);
-  res.status(500).json({ success: false, error: "Internal server error" });
+  res.status(500).json({ success: false, message: "Internal server error", error: "Internal server error" });
 });
 
 async function sendSessionReminders() {

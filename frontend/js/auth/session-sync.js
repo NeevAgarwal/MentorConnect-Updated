@@ -18,25 +18,22 @@ export async function syncBackendJwt(firebaseUser) {
   const base = apiBase();
   if (!base) throw new Error("API base URL not configured");
 
-  let res;
-  // Use centralized mcPost helper when available
   try {
-    const res = await (typeof mcPost === "function"
-      ? mcPost("/api/auth/session", { idToken })
-      : fetch(base + "/api/auth/session", {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Accept: "application/json" },
-          body: JSON.stringify({ idToken }),
-        }).then((r) => r.json().then((d) => ({ ok: r.ok, status: r.status, data: d }))));
+    const res = await fetch(base + "/api/auth/session", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify({ idToken }),
+    }).then((r) => r.json().then((d) => ({ ok: r.ok, status: r.status, data: d })).catch(() => ({ ok: r.ok, status: r.status, data: {} })));
 
     if (!res || !res.ok) {
-      throw new Error((res && res.data && res.data.error) || "Session exchange failed");
+      throw new Error((res && res.data && (res.data.message || res.data.error)) || "Session exchange failed");
     }
 
-    const data = res.data || res;
-    if (!data.success || !data.token) throw new Error(data.error || "Invalid session response");
+    const raw = res.data || {};
+    const data = raw.data || raw;
+    if (!data.token) throw new Error(raw.error || raw.message || "Invalid session response");
 
-    setState({ jwt: data.token, profile: data.user || null });
+    setState({ jwt: data.token, profile: data.user || null, sessionReady: true, authError: null });
     persistSessionPrefs();
     return data;
   } catch (e) {

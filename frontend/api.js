@@ -6,6 +6,13 @@
 // Global state for current JWT and user
 let mcGlobalJwt = localStorage.getItem("mc_jwt") || null;
 let mcGlobalUser = null;
+let mcJwtRefreshPromise = null;
+
+function notifyMcSessionChanged() {
+  try {
+    window.dispatchEvent(new CustomEvent("mc:session", { detail: { token: mcGlobalJwt, user: mcGlobalUser } }));
+  } catch (_) {}
+}
 
 /**
  * Store JWT and user info from session response
@@ -22,6 +29,7 @@ function storeMcSession(data) {
       if (data.user.isAdmin) localStorage.setItem("mc_admin", "1");
       else localStorage.removeItem("mc_admin");
     }
+    notifyMcSessionChanged();
     return true;
   }
   return false;
@@ -47,7 +55,8 @@ async function syncMcJwt() {
     });
 
     if (!res.ok) {
-      console.error("[API] JWT sync failed:", res.status);
+      const data = await res.json().catch(() => null);
+      console.error("[API] JWT sync failed:", res.status, data?.message || data?.error || "");
       return null;
     }
 
@@ -68,6 +77,46 @@ async function syncMcJwt() {
  */
 function getMcJwt() {
   return mcGlobalJwt || localStorage.getItem("mc_jwt") || null;
+}
+
+function clearMcSession() {
+  mcGlobalJwt = null;
+  mcGlobalUser = null;
+  localStorage.removeItem("mc_jwt");
+  localStorage.removeItem("mc_uid");
+  localStorage.removeItem("mc_name");
+  localStorage.removeItem("mc_email");
+  localStorage.removeItem("mc_role");
+  localStorage.removeItem("mc_admin");
+  notifyMcSessionChanged();
+}
+
+function isPublicApi(path) {
+  return (
+    path.startsWith("/api/auth/session") ||
+    path.startsWith("/api/users/register") ||
+    path.startsWith("/api/users/mentors") ||
+    path.startsWith("/api/reviews/mentor/")
+  );
+}
+
+async function waitForAuthIfNeeded(path, options) {
+  if (options.skipAuthWait || options.authRequired === false || isPublicApi(path)) return;
+  if (window.MC_AUTH_READY && typeof window.MC_AUTH_READY.then === "function") {
+    await Promise.race([
+      window.MC_AUTH_READY.catch(() => null),
+      new Promise((resolve) => setTimeout(resolve, options.authTimeout || 10000)),
+    ]);
+  }
+}
+
+function refreshJwtOnce() {
+  if (!mcJwtRefreshPromise) {
+    mcJwtRefreshPromise = syncMcJwt().finally(() => {
+      mcJwtRefreshPromise = null;
+    });
+  }
+  return mcJwtRefreshPromise;
 }
 
 /**
@@ -113,9 +162,11 @@ async function mcFetch(path, options = {}) {
 
   const isForm = options.body instanceof FormData;
   const isJson = options.body && typeof options.body === "object" && !isForm;
-  const { _retried, skipAuthRetry, timeout, ...fetchOptions } = options;
+  const { _retried, skipAuthRetry, skipAuthWait, authRequired, authTimeout, timeout, ...fetchOptions } = options;
 
   try {
+    await waitForAuthIfNeeded(path, options);
+
     // Prepare request
     const headers = apiHeaders(isJson, fetchOptions.headers);
     const controller = new AbortController();
@@ -135,15 +186,15 @@ async function mcFetch(path, options = {}) {
 
     // Handle auth token expiration - retry with fresh JWT
     if (response.status === 401 && !_retried && !skipAuthRetry && typeof auth !== "undefined" && auth.currentUser) {
-      const freshToken = await syncMcJwt();
-      if (freshToken && freshToken !== getMcJwt()) {
-        // Retry with fresh token
+      const freshToken = await refreshJwtOnce();
+      if (freshToken) {
         return mcFetch(path, {
           ...options,
           _retried: true,
           skipAuthRetry: true,
         });
       }
+      clearMcSession();
     }
 
     // Parse response
