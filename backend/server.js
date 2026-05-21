@@ -5,7 +5,6 @@ const mongoose = require("mongoose");
 const cors = require("cors");
 const helmet = require("helmet");
 const rateLimit = require("express-rate-limit");
-const mongoSanitize = require("express-mongo-sanitize");
 require("dotenv").config();
 
 const userRoutes = require("./routes/userRoutes");
@@ -38,7 +37,24 @@ app.use(
 );
 
 app.use(express.json({ limit: "1.2mb" }));
-app.use(mongoSanitize());
+
+app.use((req, _res, next) => {
+  const clean = (obj) => {
+    if (!obj || typeof obj !== "object") return;
+
+    Object.keys(obj).forEach((key) => {
+      if (key.includes("$") || key.includes(".")) {
+        delete obj[key];
+      } else if (typeof obj[key] === "object") {
+        clean(obj[key]);
+      }
+    });
+  };
+
+  clean(req.body);
+  clean(req.params);
+  next();
+});
 
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
