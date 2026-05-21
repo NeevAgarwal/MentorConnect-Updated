@@ -1,5 +1,6 @@
 let apiMentors = [];
 let activeFilter = "All";
+let activeSort = "recommended";
 let searchTimer = null;
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -14,24 +15,67 @@ document.addEventListener("DOMContentLoaded", () => {
 });
 
 async function loadMentorsFromApi() {
-  const base = window.MC_API || "http://localhost:5000";
   const q = document.getElementById("searchInput").value.trim();
   const params = new URLSearchParams();
   if (q) params.set("q", q);
   if (activeFilter !== "All") params.set("domain", activeFilter);
-  params.set("sort", "recommended");
+  params.set("sort", activeSort);
   try {
-    const res = await mcGet("/api/users/mentors?" + params.toString());
-    if (!res.ok) {
-      console.warn("[APP] mentors fetch failed", res.error || res.status);
-      apiMentors = [];
-    } else {
-      apiMentors = res.data.mentors || [];
-    }
+    const base = window.MC_API || "http://localhost:5000";
+    const response = await fetch(`${base}/api/users/mentors?${params.toString()}`);
+    const data = response.ok ? await response.json() : null;
+    apiMentors = data?.mentors || [];
     renderMentors(apiMentors);
+    renderHomeActivity(apiMentors);
   } catch {
     renderMentors(mentors);
+    renderHomeActivity(mentors);
   }
+}
+
+function renderHomeActivity(list) {
+  const mentorsList = list || [];
+  const skillCounts = new Map();
+  const domainCounts = new Map();
+  let sessions = 0;
+  let ratingTotal = 0;
+  let ratingCount = 0;
+  mentorsList.forEach((m) => {
+    [...(m.skills || []), ...(m.expertiseTags || [])].forEach((s) => {
+      if (s) skillCounts.set(s, (skillCounts.get(s) || 0) + 1);
+    });
+    if (m.domain) domainCounts.set(m.domain, (domainCounts.get(m.domain) || 0) + 1);
+    sessions += Number(m.totalSessions || m.reviews || 0);
+    if (Number(m.ratingAvg || m.rating)) {
+      ratingTotal += Number(m.ratingAvg || m.rating);
+      ratingCount += 1;
+    }
+  });
+
+  const statMentors = document.getElementById("homeStatMentors");
+  const statSessions = document.getElementById("homeStatSessions");
+  const statRating = document.getElementById("homeStatRating");
+  if (statMentors) statMentors.textContent = mentorsList.length ? `${mentorsList.length}+` : "500+";
+  if (statSessions) statSessions.textContent = sessions ? `${sessions}+` : "12K+";
+  if (statRating) statRating.textContent = ratingCount ? (ratingTotal / ratingCount).toFixed(1) : "4.9";
+
+  const renderTags = (id, map, fallback) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const rows = [...map].sort((a, b) => b[1] - a[1]).slice(0, 8);
+    el.innerHTML = (rows.length ? rows : fallback.map((x) => [x, ""]))
+      .map(([label, count]) => `<button class="activity-tag" onclick='setSearchAndFilter(${JSON.stringify(label)})'>${esc(label)}${count ? ` <span>${count}</span>` : ""}</button>`)
+      .join("");
+  };
+  renderTags("homeTrendingSkills", skillCounts, quickTags);
+  renderTags("homeTopDomains", domainCounts, domains.filter((d) => d !== "All"));
+
+  const pulse = document.getElementById("homePulse");
+  if (pulse) {
+    const activeMentors = mentorsList.filter((m) => (m.bookableSlots || []).length || m.featured).length;
+    pulse.innerHTML = `<strong>${activeMentors || mentorsList.length}</strong> mentors are discoverable with live profiles, booking, chat, and recommendations.`;
+  }
+  if (window.lucide) lucide.createIcons();
 }
 
 function renderTags() {
@@ -124,6 +168,7 @@ function filterMentors() {
 
 function setDomain(d) {
   activeFilter = d;
+  activeSort = "recommended";
   renderDomainFilters();
   loadMentorsFromApi();
 }
@@ -139,6 +184,15 @@ function searchAndScroll() {
     const section = document.getElementById("mentorsSection");
     if (section) section.scrollIntoView({ behavior: "smooth", block: "start" });
   }, 100);
+}
+
+function quickExplore(term = "", sort = "recommended") {
+  document.querySelectorAll(".nav-item").forEach((i) => i.classList.remove("open"));
+  activeSort = sort;
+  if (term && term !== "new") document.getElementById("searchInput").value = term;
+  if (term === "new") document.getElementById("searchInput").value = "";
+  loadMentorsFromApi();
+  searchAndScroll();
 }
 
 function toggleDropdown(id) {
@@ -173,6 +227,25 @@ const modalContent = {
       { heading: "Getting students", body: "Appear in marketplace search and recommended lists based on skills and ratings." },
       { heading: "Earnings", body: "Track completed sessions and revenue in the analytics dashboard." },
       { heading: "Your commitment", body: "Accept or reject booking requests; reschedule when needed." },
+    ],
+  },
+  "Mentor Profile Tips": {
+    icon: "clipboard-list",
+    title: "Mentor Profile Tips",
+    sections: [
+      { heading: "Lead with outcomes", body: "Use your bio to explain the decisions, interviews, projects, or career moves you can help with." },
+      { heading: "Add proof", body: "Complete company, education, GitHub, LinkedIn, expertise tags, and availability so students can trust the profile." },
+      { heading: "Keep slots fresh", body: "Published availability improves booking confidence and helps the dashboard surface active mentors." },
+      { heading: "Price clearly", body: "Set a session price that matches your experience and update it as demand grows." },
+    ],
+  },
+  Earnings: {
+    icon: "trending-up",
+    title: "Mentor Earnings",
+    sections: [
+      { heading: "Set your rate", body: "Mentors control their price per session from the profile page." },
+      { heading: "Track performance", body: "Completed sessions, profile views, ratings, and total earnings are visible in mentor analytics." },
+      { heading: "Grow demand", body: "Strong expertise tags, reliable availability, and faster responses improve discovery and repeat bookings." },
     ],
   },
   "Booking Process": {

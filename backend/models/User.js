@@ -32,6 +32,7 @@ const UserSchema = new mongoose.Schema(
     linkedin: { type: String, default: "", maxlength: 500 },
     github: { type: String, default: "", maxlength: 500 },
     company: { type: String, default: "", maxlength: 120 },
+    education: { type: String, default: "", maxlength: 160 },
     experience: { type: String, default: "", maxlength: 500 },
 
     pricePerSession: { type: Number, default: 0, min: 0, max: 100000 },

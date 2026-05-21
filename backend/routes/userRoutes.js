@@ -38,6 +38,10 @@ function normalizeDateArray(value, maxItems = 200) {
     });
 }
 
+function escapeRegex(s) {
+  return String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 router.post(
   "/register",
   body("idToken").isString().isLength({ min: 20, max: 12000 }),
@@ -164,7 +168,17 @@ router.get(
       .filter(Boolean);
 
     const andParts = [];
-    if (skills.length) andParts.push({ skills: { $all: skills } });
+    if (skills.length) {
+      andParts.push({
+        $and: skills.map((skill) => ({
+          $or: [
+            { skills: new RegExp(escapeRegex(skill), "i") },
+            { expertiseTags: new RegExp(escapeRegex(skill), "i") },
+            { bio: new RegExp(escapeRegex(skill), "i") },
+          ],
+        })),
+      });
+    }
     if (req.query.q) {
       const q = req.query.q.trim();
       andParts.push({
@@ -203,6 +217,9 @@ router.get(
       if (m.featured) s += 15;
       s += (m.ratingAvg || 0) * 8;
       s += Math.min(25, (m.totalSessions || 0) * 0.5);
+      s += Math.min(10, (m.bookableSlots || []).length * 2);
+      if (m.profilePic) s += 3;
+      if (m.bio && m.bio.length > 80) s += 5;
       const pool = [...(m.skills || []), ...(m.expertiseTags || [])].map((x) => String(x).toLowerCase());
       if (viewer) {
         (viewer.skills || []).forEach((k) => {
@@ -275,6 +292,7 @@ router.put(
   body("linkedin").optional().isString().isLength({ max: 500 }),
   body("github").optional().isString().isLength({ max: 500 }),
   body("company").optional().isString().isLength({ max: 120 }),
+  body("education").optional().isString().isLength({ max: 160 }),
   body("experience").optional().isString().isLength({ max: 500 }),
   body("profilePic").optional().isString().isLength({ max: 2000 }),
   body("resumeUrl").optional().isString().isLength({ max: 2000 }),
@@ -297,6 +315,7 @@ router.put(
       "linkedin",
       "github",
       "company",
+      "education",
       "experience",
       "profilePic",
       "resumeUrl",

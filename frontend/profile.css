@@ -46,6 +46,69 @@
 }
 
 .preview-skills { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
+.profile-completion {
+  width: 100%;
+  padding: 10px;
+  border-radius: 12px;
+  background: rgba(255,255,255,0.035);
+  border: 1px solid var(--glass-border);
+}
+.completion-top {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  color: var(--text-muted);
+  font-size: 11px;
+  margin-bottom: 8px;
+}
+.completion-top strong { color: var(--gold); }
+.completion-bar {
+  height: 7px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.08);
+  overflow: hidden;
+}
+.completion-bar span {
+  display: block;
+  width: 0;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--gold-dark), var(--gold-light));
+  transition: width 0.25s ease;
+}
+.preview-stats {
+  width: 100%;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+.preview-stat {
+  padding: 9px 6px;
+  border-radius: 10px;
+  background: rgba(255,255,255,0.035);
+  border: 1px solid var(--glass-border);
+}
+.preview-stat strong {
+  display: block;
+  color: var(--gold);
+  font-family: 'Syne', sans-serif;
+  font-size: 15px;
+}
+.preview-stat span { font-size: 10px; color: var(--text-dim); }
+.preview-links {
+  width: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+}
+.preview-link {
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--gold-border);
+  color: var(--gold);
+  font-size: 11px;
+}
 
 /* ── Form ─────────────────────────────────────────────────────── */
 .profile-form-wrap { display: flex; flex-direction: column; gap: 16px; }
@@ -172,6 +235,33 @@
   font-size: 12px; padding: 4px 8px; border-radius: 6px;
   border: 1px solid var(--glass-border); background: transparent;
   color: var(--text-muted); cursor: pointer;
+}
+.profile-timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 10px;
+}
+.timeline-item {
+  position: relative;
+  padding: 10px 12px 10px 28px;
+  border-radius: 10px;
+  background: rgba(255,255,255,0.035);
+  border: 1px solid var(--glass-border);
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+.timeline-item::before {
+  content: "";
+  position: absolute;
+  left: 11px;
+  top: 15px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--gold);
+  box-shadow: 0 0 0 4px rgba(212,175,55,0.08);
 }
 
 /* ── Responsive ───────────────────────────────────────────────── */

@@ -36,6 +36,201 @@ function escapeHtml(str) {
     .replace(/"/g, "&quot;");
 }
 
+function initialsFor(name) {
+  return (name || "?")
+    .split(" ")
+    .map((w) => w[0])
+    .slice(0, 2)
+    .join("")
+    .toUpperCase();
+}
+
+function avatarHtml(user, className = "mini-avatar") {
+  const pic = user?.profilePic ? `<img src="${escapeHtml(user.profilePic)}" alt="" />` : initialsFor(user?.name);
+  return `<div class="${className}">${pic}</div>`;
+}
+
+function setWidgetLoading(id, count = 3) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.innerHTML = Array(count).fill(0).map(() => '<div class="mini-card skeleton-line"></div>').join("");
+}
+
+function setWidgetEmpty(id, text) {
+  const el = document.getElementById(id);
+  if (el) el.innerHTML = `<div class="widget-empty">${escapeHtml(text)}</div>`;
+}
+
+function compactDate(value) {
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+}
+
+function renderTopLists() {
+  const skillCounts = new Map();
+  const domainCounts = new Map();
+  allUsers.forEach((u) => {
+    [...(u.skills || []), ...(u.expertiseTags || [])].forEach((s) => {
+      const key = String(s || "").trim();
+      if (key) skillCounts.set(key, (skillCounts.get(key) || 0) + 1);
+    });
+    if (u.role === "mentor" && u.domain) {
+      domainCounts.set(u.domain, (domainCounts.get(u.domain) || 0) + 1);
+    }
+  });
+
+  const renderCloud = (id, entries, empty) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const list = [...entries].sort((a, b) => b[1] - a[1]).slice(0, 10);
+    if (!list.length) {
+      el.innerHTML = `<div class="widget-empty">${escapeHtml(empty)}</div>`;
+      return;
+    }
+    el.innerHTML = list.map(([label, count]) => `<span class="tag-chip">${escapeHtml(label)} <strong>${count}</strong></span>`).join("");
+  };
+
+  renderCloud("topSkills", skillCounts, "Skills will appear as profiles are completed.");
+  renderCloud("trendingDomains", domainCounts, "Mentor domains will appear after mentors add them.");
+}
+
+function renderMentorWidgets() {
+  const rec = document.getElementById("recommendedMentors");
+  const active = document.getElementById("recentlyActiveMentors");
+  if (rec) {
+    const mentors = mentorList.slice(0, 4);
+    if (!mentors.length) {
+      setWidgetEmpty("recommendedMentors", "Complete your interests and goals to unlock smarter recommendations.");
+    } else {
+      rec.innerHTML = mentors
+        .map(
+          (m) => `
+          <div class="mini-card">
+            ${avatarHtml(m)}
+            <div>
+              <div class="mini-title">${escapeHtml(m.name || "Mentor")}</div>
+              <div class="mini-sub">${escapeHtml([m.domain || "General", m.company || ""].filter(Boolean).join(" - "))}</div>
+            </div>
+            <a class="mini-link" href="chat.html?with=${encodeURIComponent(m.firebaseUID || "")}">${m.matchScore ?? 0}%</a>
+          </div>`
+        )
+        .join("");
+    }
+  }
+  if (active) {
+    const mentors = mentorList
+      .slice()
+      .sort((a, b) => {
+        const slotScore = (b.bookableSlots?.length || 0) - (a.bookableSlots?.length || 0);
+        if (slotScore) return slotScore;
+        return new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0);
+      })
+      .slice(0, 4);
+    if (!mentors.length) {
+      setWidgetEmpty("recentlyActiveMentors", "No active mentors yet. New mentor activity will show here.");
+    } else {
+      active.innerHTML = mentors
+        .map(
+          (m) => `
+          <div class="mini-card">
+            ${avatarHtml(m)}
+            <div>
+              <div class="mini-title">${escapeHtml(m.name || "Mentor")}</div>
+              <div class="mini-sub">${(m.bookableSlots || []).length} open slots - ${escapeHtml(m.domain || "General")}</div>
+            </div>
+            <a class="mini-link" href="chat.html?with=${encodeURIComponent(m.firebaseUID || "")}">Open</a>
+          </div>`
+        )
+        .join("");
+    }
+  }
+}
+
+async function loadDashboardActivity() {
+  ["continueConversation", "upcomingSessions", "unreadNotifications"].forEach((id) => setWidgetLoading(id, 2));
+  const [chatRes, bookingRes, notifRes] = await Promise.allSettled([
+    mcGet("/api/chat/conversations"),
+    mcGet("/api/bookings/mine"),
+    mcGet("/api/notifications/mine"),
+  ]);
+
+  const chats = chatRes.value?.ok ? chatRes.value.data.conversations || [] : [];
+  const conv = document.getElementById("continueConversation");
+  if (conv) {
+    if (!chats.length) {
+      setWidgetEmpty("continueConversation", "No conversations yet. Message a mentor from the marketplace to start one.");
+    } else {
+      conv.innerHTML = chats
+        .slice(0, 4)
+        .map((c) => {
+          const u = c.otherUser || {};
+          return `
+          <div class="mini-card">
+            ${avatarHtml(u)}
+            <div>
+              <div class="mini-title">${escapeHtml(u.name || "User")}</div>
+              <div class="mini-sub">${escapeHtml(c.lastMessage?.text || "No messages yet")}</div>
+            </div>
+            <a class="mini-link" href="chat.html?with=${encodeURIComponent(u.firebaseUID || "")}">${c.unreadCount ? `${c.unreadCount} new` : "Open"}</a>
+          </div>`;
+        })
+        .join("");
+    }
+  }
+
+  const bookings = bookingRes.value?.ok ? bookingRes.value.data.bookings || [] : [];
+  const upcoming = bookings
+    .filter((b) => new Date(b.startTime) > new Date() && ["pending", "confirmed"].includes(b.status))
+    .sort((a, b) => new Date(a.startTime) - new Date(b.startTime))
+    .slice(0, 4);
+  const sessions = document.getElementById("upcomingSessions");
+  if (sessions) {
+    if (!upcoming.length) {
+      setWidgetEmpty("upcomingSessions", "No upcoming sessions. Book a mentor when you are ready.");
+    } else {
+      const me = auth.currentUser?.uid;
+      sessions.innerHTML = upcoming
+        .map((b) => {
+          const person = b.mentorFirebaseUID === me ? b.student : b.mentor;
+          return `
+          <div class="mini-card">
+            ${avatarHtml(person || {})}
+            <div>
+              <div class="mini-title">${escapeHtml(b.topic || "Mentor session")}</div>
+              <div class="mini-sub">${escapeHtml(person?.name || "Participant")} - ${compactDate(b.startTime)}</div>
+            </div>
+            <a class="mini-link" href="sessions.html">${escapeHtml(b.status)}</a>
+          </div>`;
+        })
+        .join("");
+    }
+  }
+
+  const notifications = notifRes.value?.ok ? notifRes.value.data.notifications || [] : [];
+  const unread = notifications.filter((n) => !n.read).slice(0, 4);
+  const notif = document.getElementById("unreadNotifications");
+  if (notif) {
+    if (!unread.length) {
+      setWidgetEmpty("unreadNotifications", "All caught up. New booking and chat alerts will land here.");
+    } else {
+      notif.innerHTML = unread
+        .map(
+          (n) => `
+          <div class="mini-card">
+            <div class="mini-avatar">!</div>
+            <div>
+              <div class="mini-title">${escapeHtml(n.title || "Notification")}</div>
+              <div class="mini-sub">${escapeHtml(n.body || "")}</div>
+            </div>
+            <span class="mini-meta">${compactDate(n.createdAt)}</span>
+          </div>`
+        )
+        .join("");
+    }
+  }
+}
+
 function toDatetimeLocalValue(date) {
   const d = new Date(date);
   if (Number.isNaN(d.getTime())) return "";
@@ -83,6 +278,7 @@ function connectDashboardRealtime() {
   });
   dashboardSocket.on("notification:new", () => {
     loadNotificationsBadge();
+    loadDashboardActivity();
     if (document.getElementById("notifDropdown")?.classList.contains("open")) {
       loadNotifList();
     }
@@ -138,9 +334,17 @@ async function loadNotifList() {
     list.querySelectorAll(".notif-item").forEach((el) => {
       el.addEventListener("click", async () => {
         const id = el.getAttribute("data-id");
+        const n = (res.data.notifications || []).find((item) => item._id === id);
         await mcPatch(`/api/notifications/${id}/read`, {});
         el.classList.remove("unread");
         loadNotificationsBadge();
+        loadDashboardActivity();
+        if (n?.meta?.conversationId || n?.type === "message") {
+          const peer = n.meta?.from || "";
+          if (peer) window.location.href = `chat.html?with=${encodeURIComponent(peer)}`;
+        } else if (n?.meta?.bookingId || /booking|session/i.test(n?.type || n?.title || "")) {
+          window.location.href = "sessions.html";
+        }
       });
     });
   } catch (err) {
@@ -184,6 +388,7 @@ async function initAuthGuard() {
 
   loadUsers();
   loadMentors();
+  loadDashboardActivity();
   loadNotificationsBadge();
   connectDashboardRealtime();
 
@@ -209,6 +414,7 @@ async function loadUsers() {
     if (statStudents) statStudents.textContent = students;
     
     renderNetwork(allUsers);
+    renderTopLists();
   } catch (err) {
     console.error("[DASHBOARD] Error loading users:", err);
     showToast("Could not load directory", "error");
@@ -256,6 +462,8 @@ async function loadMentors() {
         const skills =
           (m.skills || []).slice(0, 5).map((s) => `<span class="skill-tag">${escapeHtml(s)}</span>`).join("") ||
           '<span class="skill-tag">—</span>';
+        const expertise = (m.expertiseTags || []).slice(0, 3).map((s) => `<span class="skill-tag expert">${escapeHtml(s)}</span>`).join("");
+        const slotCount = (m.bookableSlots || []).filter((d) => new Date(d) > new Date()).length;
         const bookBtn =
           myUid && myUid !== m.firebaseUID && (localStorage.getItem("mc_role") || "") === "student"
             ? `<button type="button" class="connect-btn book-open" data-uid="${escapeHtml(m.firebaseUID)}">Book</button>`
@@ -274,10 +482,11 @@ async function loadMentors() {
           <div class="rating-row">
             <span class="stars">★ ${(m.ratingAvg || 0).toFixed(1)}</span>
             <span class="sessions-count">${m.totalSessions || 0} sessions</span>
+            <span class="sessions-count">${slotCount} open slots</span>
             <span class="price-tag">${escapeHtml(m.currency || "INR")} ${m.pricePerSession || 0}<small>/session</small></span>
           </div>
           <p class="card-bio">${escapeHtml((m.bio || "").slice(0, 160))}${(m.bio || "").length > 160 ? "…" : ""}</p>
-          <div class="card-skills">${skills}</div>
+          <div class="card-skills">${skills}${expertise}</div>
           <div class="card-actions">
             ${m.linkedin ? `<a class="connect-btn outline" href="${escapeHtml(m.linkedin)}" target="_blank" rel="noopener">LinkedIn</a>` : ""}
             ${bookBtn}
@@ -300,10 +509,12 @@ async function loadMentors() {
         }
       });
     });
+    renderMentorWidgets();
   } catch (err) {
     console.error("[DASHBOARD] Error loading mentors:", err);
     grid.innerHTML = "";
     showToast("Could not load mentors", "error");
+    renderMentorWidgets();
   }
 }
 
@@ -482,6 +693,7 @@ async function submitBooking() {
     showToast("Booking requested! Check Sessions.");
     closeBookingModal();
     loadMentors();
+    loadDashboardActivity();
     loadNotificationsBadge();
   } catch (err) {
     console.error("[DASHBOARD] Booking error:", err);

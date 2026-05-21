@@ -20,11 +20,31 @@
   border-radius: 10px;
   cursor: pointer;
   border: 1px solid transparent;
+  display: grid;
+  grid-template-columns: 38px 1fr auto;
+  gap: 10px;
+  align-items: center;
 }
 .conv-item:hover, .conv-item.active { background: var(--gold-glass); border-color: var(--gold-border); }
+.conv-avatar {
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  background: linear-gradient(135deg, #1a3a6e, #D4AF37);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 800;
+}
+.conv-avatar img { width: 100%; height: 100%; object-fit: cover; }
+.conv-copy { min-width: 0; }
 .conv-item-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .conv-item-name { font-weight: 600; font-size: 14px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .conv-item-preview { font-size: 12px; color: var(--text-muted); margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.conv-time { font-size: 10px; color: var(--text-dim); flex-shrink: 0; }
 .conv-unread {
   min-width: 20px;
   height: 20px;
@@ -51,8 +71,13 @@
   border-radius: 0;
   border: none;
   border-bottom: 1px solid var(--glass-border);
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  align-items: center;
 }
 .chat-peer { font-family: 'Syne', sans-serif; font-weight: 700; }
+.chat-peer-status { font-size: 12px; color: var(--text-muted); margin-top: 3px; }
 .typing-ind { font-size: 12px; color: var(--gold); min-height: 16px; margin-top: 4px; }
 
 .msg-thread {
@@ -69,7 +94,9 @@
   border-radius: 14px;
   font-size: 14px;
   line-height: 1.45;
+  overflow-wrap: anywhere;
 }
+.bubble.grouped { margin-top: -6px; }
 .bubble.me {
   align-self: flex-end;
   background: linear-gradient(135deg, rgba(212,175,55,0.25), rgba(212,175,55,0.08));
@@ -87,6 +114,16 @@
   background: rgba(248,113,113,0.08);
 }
 .bubble.failed .bubble-meta { color: #F87171; }
+.date-divider {
+  align-self: center;
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.045);
+  border: 1px solid var(--glass-border);
+  color: var(--text-dim);
+  font-size: 11px;
+  margin: 6px 0;
+}
 
 .chat-composer {
   display: flex;

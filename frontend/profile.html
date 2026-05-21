@@ -68,8 +68,17 @@
         <div class="preview-role-wrap">
           <span class="card-role" id="previewRole">student</span>
         </div>
+        <div class="profile-completion">
+          <div class="completion-top">
+            <span>Profile completion</span>
+            <strong id="completionPct">0%</strong>
+          </div>
+          <div class="completion-bar"><span id="completionBar"></span></div>
+        </div>
         <p class="preview-bio" id="previewBio">Your bio will appear here…</p>
         <div class="preview-skills" id="previewSkills"></div>
+        <div class="preview-stats" id="previewStats"></div>
+        <div class="preview-links" id="previewLinks"></div>
       </div>
 
       <!-- Edit Form -->
@@ -106,6 +115,10 @@
           <div class="form-group">
             <label class="form-label">Company</label>
             <input type="text" id="companyInput" class="profile-input" placeholder="Where you work" maxlength="120" />
+          </div>
+          <div class="form-group">
+            <label class="form-label">Education</label>
+            <input type="text" id="educationInput" class="profile-input" placeholder="Degree, college, or learning path" maxlength="160" />
           </div>
           <div class="form-group">
             <label class="form-label">Domain (e.g. Engineering, Design)</label>
@@ -183,6 +196,7 @@
             <label class="form-label">Experience / Background</label>
             <input type="text" id="experienceInput" class="profile-input" placeholder="e.g. 3 years at Google, CS grad…" />
           </div>
+          <div class="profile-timeline" id="profileTimeline"></div>
         </div>
 
         <!-- Save Button -->

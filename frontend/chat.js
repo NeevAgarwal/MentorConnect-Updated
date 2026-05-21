@@ -36,6 +36,26 @@ function esc(s) {
     .replace(/"/g, "&quot;");
 }
 
+function initials(name) {
+  return (name || "?")
+    .split(" ")
+    .map((w) => w[0])
+    .slice(0, 2)
+    .join("")
+    .toUpperCase();
+}
+
+function avatarFor(user) {
+  if (user?.profilePic) return `<img src="${esc(user.profilePic)}" alt="" />`;
+  return initials(user?.name || "User");
+}
+
+function shortTime(value) {
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
 function params() {
   const u = new URLSearchParams(location.search);
   return u.get("with") || "";
@@ -60,11 +80,15 @@ async function loadSidebar() {
   list.innerHTML = rows
     .map((c) => `
     <div class="conv-item ${activeWith === c.otherUser?.firebaseUID ? "active" : ""}" data-with="${esc(c.otherUser?.firebaseUID || '')}" data-name="${esc(c.otherUser?.name || 'User')}">
+      <div class="conv-avatar">${avatarFor(c.otherUser)}</div>
+      <div class="conv-copy">
       <div class="conv-item-top">
         <div class="conv-item-name">${esc(c.otherUser?.name || 'Unknown')}</div>
-        ${c.unreadCount ? `<span class="conv-unread">${c.unreadCount > 99 ? "99+" : esc(c.unreadCount)}</span>` : ""}
+        <span class="conv-time">${shortTime(c.lastMessage?.createdAt)}</span>
       </div>
       <div class="conv-item-preview">${esc(c.lastMessage?.text || '')}</div>
+      </div>
+      ${c.unreadCount ? `<span class="conv-unread">${c.unreadCount > 99 ? "99+" : esc(c.unreadCount)}</span>` : ""}
     </div>`)
     .join("");
 
@@ -86,19 +110,32 @@ function setTypingText(text) {
   if (ind) ind.textContent = text || "";
 }
 
-function messageHtml(m, me) {
+function messageHtml(m, me, grouped = false) {
   const mine = m.senderFirebaseUID === me;
-  const t = new Date(m.createdAt || Date.now()).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  const t = shortTime(m.createdAt || Date.now());
   const id = esc(m._id || m.clientId || `${m.senderFirebaseUID}-${m.createdAt || Date.now()}`);
   const status = m.pending ? "Sending..." : m.failed ? "Failed to send" : t;
-  return `<div class="bubble ${mine ? "me" : "them"} ${m.pending ? "pending" : ""} ${m.failed ? "failed" : ""}" data-msg-id="${id}">${esc(m.text)}<div class="bubble-meta">${esc(status)}</div></div>`;
+  return `<div class="bubble ${mine ? "me" : "them"} ${grouped ? "grouped" : ""} ${m.pending ? "pending" : ""} ${m.failed ? "failed" : ""}" data-msg-id="${id}">${esc(m.text)}<div class="bubble-meta">${esc(status)}</div></div>`;
 }
 
 function renderMessages(messages) {
   const thread = document.getElementById("msgThread");
   if (!thread) return;
   const me = auth.currentUser?.uid;
-  thread.innerHTML = (messages || []).map((m) => messageHtml(m, me)).join("");
+  let lastDay = "";
+  let lastSender = "";
+  let lastTime = 0;
+  thread.innerHTML = (messages || []).map((m) => {
+    const d = new Date(m.createdAt || Date.now());
+    const day = d.toDateString();
+    const gap = d.getTime() - lastTime;
+    const grouped = lastSender === m.senderFirebaseUID && gap < 5 * 60 * 1000 && lastDay === day;
+    const dateBreak = day !== lastDay ? `<div class="date-divider">${esc(d.toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" }))}</div>` : "";
+    lastDay = day;
+    lastSender = m.senderFirebaseUID;
+    lastTime = d.getTime();
+    return dateBreak + messageHtml(m, me, grouped);
+  }).join("");
   const saved = activeWith ? scrollByPeer.get(activeWith) : null;
   thread.scrollTop = Number.isFinite(saved) ? saved : thread.scrollHeight;
 }
@@ -108,8 +145,12 @@ function appendMessage(message) {
   if (!thread || !message) return false;
   const id = message._id || "";
   if (id && Array.from(thread.querySelectorAll(".bubble")).some((el) => el.getAttribute("data-msg-id") === id)) return false;
-  thread.insertAdjacentHTML("beforeend", messageHtml(message, auth.currentUser?.uid));
-  thread.scrollTop = thread.scrollHeight;
+  const nearBottom = thread.scrollHeight - thread.scrollTop - thread.clientHeight < 100;
+  const prev = thread.querySelector(".bubble:last-of-type");
+  const prevSender = prev?.classList.contains("me") ? auth.currentUser?.uid : "other";
+  const grouped = Boolean(prev) && ((message.senderFirebaseUID === auth.currentUser?.uid && prevSender === auth.currentUser?.uid) || (message.senderFirebaseUID !== auth.currentUser?.uid && prevSender === "other"));
+  thread.insertAdjacentHTML("beforeend", messageHtml(message, auth.currentUser?.uid, grouped));
+  if (nearBottom || message.senderFirebaseUID === auth.currentUser?.uid) thread.scrollTop = thread.scrollHeight;
   return true;
 }
 
@@ -156,6 +197,8 @@ async function selectChat(uid, name) {
   
   const peerNameEl = document.getElementById("chatPeerName");
   if (peerNameEl) peerNameEl.textContent = name || uid;
+  const statusEl = document.getElementById("chatPeerStatus");
+  if (statusEl) statusEl.textContent = socketConnected ? "Realtime connected" : "Syncing messages";
   
   setTypingText("Loading...");
   const res = await mcGet(`/api/chat/messages?withUser=${encodeURIComponent(uid)}`);
@@ -207,6 +250,8 @@ function connectSocket() {
       console.log("[CHAT] Socket connected");
       socketConnected = true;
       setTypingText("");
+      const statusEl = document.getElementById("chatPeerStatus");
+      if (statusEl) statusEl.textContent = activeWith ? "Realtime connected" : "Choose a thread to continue";
       recoverChat().catch((err) => console.warn("[CHAT] Recovery failed:", err));
     });
 
@@ -214,6 +259,8 @@ function connectSocket() {
       console.log("[CHAT] Socket disconnected");
       socketConnected = false;
       setTypingText("Reconnecting...");
+      const statusEl = document.getElementById("chatPeerStatus");
+      if (statusEl) statusEl.textContent = "Reconnecting and recovering missed messages";
     });
 
     socket.on("connect_error", (err) => {

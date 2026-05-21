@@ -85,29 +85,37 @@ function tagRenderer(containerId, list, onRemove) {
 function renderSkillPills() {
   tagRenderer("skillsTags", skills, (i) => {
     skills.splice(i, 1);
+    markDirty();
     renderSkillPills();
+    renderProfileDetails();
   });
   const previewSkills = document.getElementById("previewSkills");
   if (previewSkills) {
     previewSkills.innerHTML = skills.map((s) => `<span class="skill-tag">${escapeHtml(s)}</span>`).join("");
   }
+  renderProfileDetails();
 }
 
 function renderExp() {
   tagRenderer("expTags", expertiseTags, (i) => {
     expertiseTags.splice(i, 1);
+    markDirty();
     renderExp();
+    renderProfileDetails();
   });
+  renderProfileDetails();
 }
 function renderInterest() {
   tagRenderer("interestTags", interests, (i) => {
     interests.splice(i, 1);
+    markDirty();
     renderInterest();
   });
 }
 function renderGoals() {
   tagRenderer("goalTags", goals, (i) => {
     goals.splice(i, 1);
+    markDirty();
     renderGoals();
   });
 }
@@ -126,6 +134,7 @@ function addTo(list, raw, max, renderFn) {
       }
     });
   renderFn();
+  renderProfileDetails();
 }
 
 function renderSlots() {
@@ -165,6 +174,88 @@ function updatePreview() {
     avatar.appendChild(img);
   } else {
     avatar.textContent = initial;
+  }
+  renderProfileDetails();
+}
+
+function currentDraft() {
+  return {
+    ...(currentUser || {}),
+    role: selectedRole,
+    bio: document.getElementById("bioInput")?.value?.trim() || "",
+    skills,
+    expertiseTags,
+    interests,
+    goals,
+    linkedin: document.getElementById("linkedinInput")?.value?.trim() || "",
+    github: document.getElementById("githubInput")?.value?.trim() || "",
+    company: document.getElementById("companyInput")?.value?.trim() || "",
+    education: document.getElementById("educationInput")?.value?.trim() || "",
+    experience: document.getElementById("experienceInput")?.value?.trim() || "",
+    profilePic: document.getElementById("profilePicInput")?.value?.trim() || "",
+    resumeUrl: document.getElementById("resumeUrlInput")?.value?.trim() || "",
+    domain: document.getElementById("domainInput")?.value?.trim() || "",
+    pricePerSession: Number(document.getElementById("priceInput")?.value || 0),
+    currency: document.getElementById("currencyInput")?.value?.trim() || "INR",
+    bookableSlots,
+  };
+}
+
+function profileCompletion(user) {
+  const base = ["bio", "profilePic", "linkedin"];
+  const mentor = ["company", "education", "domain", "experience", "skills", "expertiseTags", "bookableSlots"];
+  const student = ["skills", "interests", "goals"];
+  const fields = [...base, ...(user.role === "mentor" ? mentor : student)];
+  const done = fields.filter((key) => {
+    const value = user[key];
+    if (Array.isArray(value)) return value.length > 0;
+    return Boolean(String(value || "").trim());
+  }).length;
+  return Math.round((done / fields.length) * 100);
+}
+
+function renderProfileDetails() {
+  const user = currentDraft();
+  const pct = profileCompletion(user);
+  const pctEl = document.getElementById("completionPct");
+  const bar = document.getElementById("completionBar");
+  if (pctEl) pctEl.textContent = `${pct}%`;
+  if (bar) bar.style.width = `${pct}%`;
+
+  const stats = document.getElementById("previewStats");
+  if (stats) {
+    stats.innerHTML = [
+      { label: "Sessions", value: user.totalSessions || 0 },
+      { label: "Rating", value: Number(user.ratingAvg || 0).toFixed(1) },
+      { label: "Views", value: user.profileViews || 0 },
+    ]
+      .map((item) => `<div class="preview-stat"><strong>${escapeHtml(item.value)}</strong><span>${escapeHtml(item.label)}</span></div>`)
+      .join("");
+  }
+
+  const links = document.getElementById("previewLinks");
+  if (links) {
+    const items = [
+      user.linkedin ? { label: "LinkedIn", href: user.linkedin } : null,
+      user.github ? { label: "GitHub", href: user.github } : null,
+      user.resumeUrl ? { label: "Resume", href: user.resumeUrl } : null,
+    ].filter(Boolean);
+    links.innerHTML = items.length
+      ? items
+          .map((item) => `<a class="preview-link" href="${escapeHtml(item.href)}" target="_blank" rel="noopener">${escapeHtml(item.label)}</a>`)
+          .join("")
+      : '<span class="section-sub">Add links to strengthen your profile</span>';
+  }
+
+  const timeline = document.getElementById("profileTimeline");
+  if (timeline) {
+    const points = [
+      user.company ? `Company: ${user.company}` : "",
+      user.education ? `Education: ${user.education}` : "",
+      user.experience ? `Experience: ${user.experience}` : "",
+      user.domain ? `Domain: ${user.domain}` : "",
+    ].filter(Boolean);
+    timeline.innerHTML = points.map((p) => `<div class="timeline-item">${escapeHtml(p)}</div>`).join("");
   }
 }
 
@@ -222,6 +313,7 @@ async function loadProfile(uid) {
     document.getElementById("profilePicInput").value = currentUser?.profilePic || "";
     document.getElementById("githubInput").value = currentUser?.github || "";
     document.getElementById("companyInput").value = currentUser?.company || "";
+    document.getElementById("educationInput").value = currentUser?.education || "";
     document.getElementById("domainInput").value = currentUser?.domain || "";
     document.getElementById("priceInput").value = currentUser?.pricePerSession ?? 0;
     document.getElementById("currencyInput").value = currentUser?.currency || "INR";
@@ -238,6 +330,7 @@ async function loadProfile(uid) {
     renderInterest();
     renderGoals();
     renderSlots();
+    renderProfileDetails();
 
     const previewRole = document.getElementById("previewRole");
     if (previewRole) {
@@ -282,6 +375,7 @@ async function saveProfile() {
     linkedin,
     github,
     company: document.getElementById("companyInput")?.value?.trim() || "",
+    education: document.getElementById("educationInput")?.value?.trim() || "",
     experience: document.getElementById("experienceInput")?.value?.trim() || "",
     profilePic,
     resumeUrl,
@@ -350,8 +444,11 @@ document.addEventListener("DOMContentLoaded", async () => {
   bindTagInput("interestInput", interests, 15, renderInterest);
   bindTagInput("goalInput", goals, 15, renderGoals);
 
-  ["linkedinInput", "experienceInput", "githubInput", "companyInput", "domainInput", "priceInput", "currencyInput", "resumeUrlInput"].forEach((id) => {
-    document.getElementById(id)?.addEventListener("input", markDirty);
+  ["linkedinInput", "experienceInput", "githubInput", "companyInput", "educationInput", "domainInput", "priceInput", "currencyInput", "resumeUrlInput"].forEach((id) => {
+    document.getElementById(id)?.addEventListener("input", () => {
+      markDirty();
+      renderProfileDetails();
+    });
   });
 
   document.getElementById("profilePicInput")?.addEventListener("input", () => {
