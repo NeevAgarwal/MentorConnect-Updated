@@ -37,7 +37,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     revChart = new Chart(ctx1, {
       type: "bar",
       data: {
-        labels: months.length ? months : ["—"],
+        labels: months.length ? months : ["-"],
         datasets: [{ label: "Revenue by month", data: revs.length ? revs : [0], backgroundColor: "rgba(212,175,55,0.45)" }],
       },
       options: { plugins: { legend: { labels: { color: "#ccc" } } }, scales: { x: { ticks: { color: "#888" } }, y: { ticks: { color: "#888" } } } },
@@ -45,7 +45,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   const dist = a.ratingDistribution || [];
-  const labels = dist.map((d) => String(d._id) + " ★");
+  const labels = dist.map((d) => String(d._id) + " star");
   const counts = dist.map((d) => d.count || 0);
   const ctx2 = document.getElementById("rateChart");
   if (rateChart && ctx2) rateChart.destroy();
@@ -61,7 +61,8 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   document.getElementById("logoutBtn")?.addEventListener("click", async () => {
-    localStorage.removeItem("mc_jwt");
+    if (typeof clearAuthStorage === "function") clearAuthStorage();
+    else if (typeof clearMcSession === "function") clearMcSession();
     await auth.signOut();
     location.href = "login.html";
   });

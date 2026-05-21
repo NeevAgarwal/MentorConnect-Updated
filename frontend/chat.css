@@ -112,8 +112,13 @@
 .bubble.failed {
   border-color: rgba(248,113,113,0.38);
   background: rgba(248,113,113,0.08);
+  cursor: pointer;
 }
 .bubble.failed .bubble-meta { color: #F87171; }
+.retry-hint {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
 .date-divider {
   align-self: center;
   padding: 5px 10px;
@@ -145,6 +150,15 @@
   padding: 12px;
   color: var(--text);
   font-family: inherit;
+}
+.chat-composer textarea:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.chat-composer .connect-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  transform: none;
 }
 @media (max-width: 800px) {
   .chat-sidebar { width: 100%; min-height: auto; max-height: 40vh; }

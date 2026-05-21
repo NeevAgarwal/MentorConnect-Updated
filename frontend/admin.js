@@ -15,7 +15,8 @@ function toast(m, e) {
 }
 
 async function loadAll() {
-  if (localStorage.getItem("mc_admin") !== "1") {
+  const state = getAuthState();
+  if (!state.isAdmin) {
     document.querySelector(".main-content").innerHTML = "<p style='padding:40px'>Access denied. Add your email to ADMIN_EMAILS in backend .env and re-register, or update isAdmin in MongoDB.</p>";
     return;
   }
@@ -45,7 +46,7 @@ async function loadAll() {
       <td>${esc(x.email)}</td>
       <td>${esc(x.role)}</td>
       <td>${x.banned ? "banned" : "ok"}</td>
-      <td>${x.featured ? "★" : "—"}</td>
+      <td>${x.featured ? "Yes" : "-"}</td>
       <td>
         <button class="connect-btn outline" data-ban="${esc(x.firebaseUID)}" data-state="${x.banned ? 0 : 1}">${x.banned ? "Unban" : "Ban"}</button>
         ${x.role === "mentor" ? `<button class="connect-btn outline" data-feature="${esc(x.firebaseUID)}" data-f="${x.featured ? 0 : 1}">${x.featured ? "Unfeature" : "Feature"}</button>` : ""}
@@ -101,7 +102,8 @@ document.addEventListener("DOMContentLoaded", async () => {
   if (!state.firebaseUser) return;
   loadAll();
   document.getElementById("logoutBtn")?.addEventListener("click", async () => {
-    localStorage.removeItem("mc_jwt");
+    if (typeof clearAuthStorage === "function") clearAuthStorage();
+    else if (typeof clearMcSession === "function") clearMcSession();
     await auth.signOut();
     location.href = "login.html";
   });

@@ -31,7 +31,7 @@ svg { display: inline-block; vertical-align: middle; }
 
 /* ── Keep all content above vanta ── */
 .navbar, .hero, .mentors-section,
-.how-it-works, .cta-section, .footer {
+.how-it-works, .testimonial-section, .cta-section, .footer {
   position: relative;
   z-index: 1;
 }
@@ -385,6 +385,17 @@ svg { display: inline-block; vertical-align: middle; }
 .step-num { font-size: 11px; font-weight: 700; letter-spacing: 1px; color: rgba(212,175,55,0.5); text-transform: uppercase; margin-bottom: 8px; }
 .step-title { font-weight: 600; font-size: 15px; color: var(--text); margin-bottom: 8px; }
 .step-desc { font-size: 13px; color: var(--text-muted); line-height: 1.6; }
+
+.testimonial-section { padding: 20px 2rem 70px; text-align: center; }
+.testimonial-card {
+  max-width: 760px;
+  margin: 22px auto 0;
+  padding: 28px;
+  min-height: 160px;
+}
+.testimonial-quote { color: var(--text); font-size: 18px; line-height: 1.65; }
+.testimonial-person { margin-top: 18px; color: var(--gold); font-weight: 700; }
+.testimonial-role { margin-top: 4px; color: var(--text-muted); font-size: 13px; }
 
 /* ── CTA ── */
 .cta-section { position: relative; z-index: 1; padding: 80px 2rem; text-align: center; }

@@ -1,5 +1,5 @@
 // ================================================================
-//  IdeaSphere — index-auth.js
+//  IdeaSphere index-auth.js
 //  Handles auth state on the homepage:
 //  - Shows user name + logout if logged in
 //  - Shows Login / Signup buttons if logged out
@@ -14,7 +14,7 @@ async function updateIndexAuthState() {
 
   if (state.firebaseUser) {
     const displayName = state.firebaseUser.displayName || (state.firebaseUser.email ? state.firebaseUser.email.split("@")[0] : "User");
-    if (userName) userName.textContent = `👋 Hi, ${displayName}`;
+    if (userName) userName.textContent = `Hi, ${displayName}`;
     if (authButtons) authButtons.style.display = "none";
     if (userMenu) userMenu.style.display = "flex";
   } else {
@@ -25,10 +25,10 @@ async function updateIndexAuthState() {
 
 updateIndexAuthState().catch((err) => console.error("Failed to initialize index auth state:", err));
 
-// ── Logout ──
+// Logout
 function handleLogout() {
-  localStorage.removeItem("mc_jwt");
-  localStorage.removeItem("mc_admin");
+  if (typeof clearAuthStorage === "function") clearAuthStorage();
+  else if (typeof clearMcSession === "function") clearMcSession();
   auth
     .signOut()
     .then(() => {

@@ -36,6 +36,23 @@ function showToast(msg, type = "success") {
   setTimeout(() => toast.remove(), 3200);
 }
 
+function setText(id, value) {
+  const el = document.getElementById(id);
+  if (el) el.textContent = value;
+}
+
+function setValue(id, value) {
+  const el = document.getElementById(id);
+  if (el) el.value = value == null ? "" : value;
+}
+
+function setStatus(message, type = "") {
+  const el = document.getElementById("profileStatus");
+  if (!el) return;
+  el.textContent = message || "";
+  el.className = `profile-status ${type}`.trim();
+}
+
 function setRole(role) {
   selectedRole = role;
   document.getElementById("roleStudent")?.classList.toggle("active", role === "student");
@@ -74,7 +91,7 @@ function tagRenderer(containerId, list, onRemove) {
   container.innerHTML = list
     .map(
       (s, i) =>
-        `<span class="skill-pill">${escapeHtml(s)}<button type="button" data-i="${i}" aria-label="Remove">×</button></span>`
+        `<span class="skill-pill">${escapeHtml(s)}<button type="button" data-i="${i}" aria-label="Remove">x</button></span>`
     )
     .join("");
   container.querySelectorAll("button").forEach((btn) => {
@@ -91,7 +108,9 @@ function renderSkillPills() {
   });
   const previewSkills = document.getElementById("previewSkills");
   if (previewSkills) {
-    previewSkills.innerHTML = skills.map((s) => `<span class="skill-tag">${escapeHtml(s)}</span>`).join("");
+    previewSkills.innerHTML = skills.length
+      ? skills.map((s) => `<span class="skill-tag">${escapeHtml(s)}</span>`).join("")
+      : '<span class="section-sub">Add skills to improve matches</span>';
   }
   renderProfileDetails();
 }
@@ -121,6 +140,7 @@ function renderGoals() {
 }
 
 function addTo(list, raw, max, renderFn) {
+  let skippedForLimit = false;
   String(raw || "")
     .split(",")
     .map((item) => item.trim())
@@ -131,8 +151,11 @@ function addTo(list, raw, max, renderFn) {
       if (s && !exists && list.length < max) {
         list.push(s);
         markDirty();
+      } else if (s && !exists && list.length >= max) {
+        skippedForLimit = true;
       }
     });
+  if (skippedForLimit) showToast(`Limit reached (${max})`, "error");
   renderFn();
   renderProfileDetails();
 }
@@ -140,6 +163,10 @@ function addTo(list, raw, max, renderFn) {
 function renderSlots() {
   const ul = document.getElementById("slotList");
   if (!ul) return;
+  if (!bookableSlots.length) {
+    ul.innerHTML = '<li class="slot-empty">No future slots published yet.</li>';
+    return;
+  }
   ul.innerHTML = bookableSlots
     .map((iso, i) => {
       const d = new Date(iso);
@@ -269,6 +296,16 @@ function isSafeUrl(value) {
   }
 }
 
+function isHostUrl(value, hostPart) {
+  if (!value) return true;
+  try {
+    const u = new URL(value);
+    return isSafeUrl(value) && u.hostname.toLowerCase().includes(hostPart);
+  } catch (_) {
+    return false;
+  }
+}
+
 function normalizeSlots(values) {
   return [...new Set(values)]
     .map((s) => new Date(s))
@@ -287,16 +324,16 @@ async function loadProfile(uid) {
 
     currentUser = res.data.user;
 
-    document.getElementById("sidebarName").textContent = currentUser?.name || "User";
-    document.getElementById("sidebarRole").textContent = currentUser?.role || "student";
-    document.getElementById("sidebarAvatar").textContent = (currentUser?.name || "U").charAt(0).toUpperCase();
+    setText("sidebarName", currentUser?.name || "User");
+    setText("sidebarRole", currentUser?.role || "student");
+    setText("sidebarAvatar", (currentUser?.name || "U").charAt(0).toUpperCase());
 
-    document.getElementById("previewName").textContent = currentUser?.name || "User";
-    document.getElementById("previewBio").textContent = currentUser?.bio || "No bio yet.";
+    setText("previewName", currentUser?.name || "User");
+    setText("previewBio", currentUser?.bio || "No bio yet.");
     const previewAvatar = document.getElementById("previewAvatar");
-    if (currentUser?.profilePic) {
+    if (previewAvatar && currentUser?.profilePic) {
       previewAvatar.innerHTML = `<img src="${escapeHtml(currentUser.profilePic)}" alt="" />`;
-    } else {
+    } else if (previewAvatar) {
       previewAvatar.textContent = (currentUser?.name || "U").charAt(0).toUpperCase();
     }
 
@@ -305,19 +342,19 @@ async function loadProfile(uid) {
     const bioInput = document.getElementById("bioInput");
     if (bioInput) {
       bioInput.value = currentUser?.bio || "";
-      document.getElementById("bioCount").textContent = String(bioInput.value.length);
+      setText("bioCount", String(bioInput.value.length));
     }
 
-    document.getElementById("linkedinInput").value = currentUser?.linkedin || "";
-    document.getElementById("experienceInput").value = currentUser?.experience || "";
-    document.getElementById("profilePicInput").value = currentUser?.profilePic || "";
-    document.getElementById("githubInput").value = currentUser?.github || "";
-    document.getElementById("companyInput").value = currentUser?.company || "";
-    document.getElementById("educationInput").value = currentUser?.education || "";
-    document.getElementById("domainInput").value = currentUser?.domain || "";
-    document.getElementById("priceInput").value = currentUser?.pricePerSession ?? 0;
-    document.getElementById("currencyInput").value = currentUser?.currency || "INR";
-    document.getElementById("resumeUrlInput").value = currentUser?.resumeUrl || "";
+    setValue("linkedinInput", currentUser?.linkedin || "");
+    setValue("experienceInput", currentUser?.experience || "");
+    setValue("profilePicInput", currentUser?.profilePic || "");
+    setValue("githubInput", currentUser?.github || "");
+    setValue("companyInput", currentUser?.company || "");
+    setValue("educationInput", currentUser?.education || "");
+    setValue("domainInput", currentUser?.domain || "");
+    setValue("priceInput", currentUser?.pricePerSession ?? 0);
+    setValue("currencyInput", currentUser?.currency || "INR");
+    setValue("resumeUrlInput", currentUser?.resumeUrl || "");
 
     skills = [...(currentUser?.skills || [])];
     expertiseTags = [...(currentUser?.expertiseTags || [])];
@@ -347,6 +384,7 @@ async function loadProfile(uid) {
 async function saveProfile() {
   if (!currentUID || savingProfile) return;
   setSaving(true);
+  setStatus("Saving profile...");
 
   const linkedin = document.getElementById("linkedinInput")?.value?.trim() || "";
   const github = document.getElementById("githubInput")?.value?.trim() || "";
@@ -356,11 +394,25 @@ async function saveProfile() {
 
   if (![linkedin, github, profilePic, resumeUrl].every(isSafeUrl)) {
     showToast("Use valid http/https URLs for links and uploads", "error");
+    setStatus("Use valid http/https URLs for links and uploads.", "error");
+    setSaving(false);
+    return;
+  }
+  if (!isHostUrl(linkedin, "linkedin.com")) {
+    showToast("LinkedIn URL should be a linkedin.com link", "error");
+    setStatus("LinkedIn URL should be a linkedin.com link.", "error");
+    setSaving(false);
+    return;
+  }
+  if (!isHostUrl(github, "github.com")) {
+    showToast("GitHub URL should be a github.com link", "error");
+    setStatus("GitHub URL should be a github.com link.", "error");
     setSaving(false);
     return;
   }
   if (!Number.isFinite(price) || price < 0 || price > 100000) {
     showToast("Enter a valid session price", "error");
+    setStatus("Enter a valid session price.", "error");
     setSaving(false);
     return;
   }
@@ -391,10 +443,16 @@ async function saveProfile() {
       throw new Error(res.error || "Save failed");
     }
     localStorage.setItem("mc_role", selectedRole);
+    currentUser = { ...(currentUser || {}), ...body, ...(res.data.user || {}) };
+    profileDirty = false;
+    renderProfileDetails();
+    updatePreview();
+    setStatus("Saved. Your public profile is up to date.", "success");
     showToast("Profile saved!");
     await loadProfile(currentUID);
   } catch (err) {
     console.error("[PROFILE] Save error:", err);
+    setStatus(err.message || "Failed to save.", "error");
     showToast(err.message || "Failed to save", "error");
   } finally {
     setSaving(false);
@@ -402,9 +460,9 @@ async function saveProfile() {
 }
 
 async function handleLogout() {
-  localStorage.removeItem("mc_jwt");
+  if (typeof clearAuthStorage === "function") clearAuthStorage();
+  else if (typeof clearMcSession === "function") clearMcSession();
   await auth.signOut();
-  localStorage.clear();
   window.location.href = "login.html";
 }
 
@@ -432,27 +490,35 @@ document.addEventListener("DOMContentLoaded", async () => {
   if (!state.firebaseUser) return;
   currentUID = state.firebaseUser.uid;
   await loadProfile(state.firebaseUser.uid);
+  const analyticsLink = document.getElementById("analyticsNavItem");
+  const role = state.mcUser?.role || localStorage.getItem("mc_role") || "student";
+  if (analyticsLink) analyticsLink.style.display = role === "mentor" ? "flex" : "none";
 
   document.getElementById("bioInput")?.addEventListener("input", function () {
-    document.getElementById("bioCount").textContent = String(this.value.length);
-    document.getElementById("previewBio").textContent = this.value || "Your bio will appear here...";
+    setText("bioCount", String(this.value.length));
+    setText("previewBio", this.value || "Your bio will appear here...");
     markDirty();
+    setStatus("");
   });
 
   bindTagInput("skillInput", skills, 12, renderSkillPills);
   bindTagInput("expInput", expertiseTags, 15, renderExp);
   bindTagInput("interestInput", interests, 15, renderInterest);
   bindTagInput("goalInput", goals, 15, renderGoals);
+  const slotPicker = document.getElementById("slotPicker");
+  if (slotPicker) slotPicker.min = new Date(Date.now() + 15 * 60 * 1000).toISOString().slice(0, 16);
 
   ["linkedinInput", "experienceInput", "githubInput", "companyInput", "educationInput", "domainInput", "priceInput", "currencyInput", "resumeUrlInput"].forEach((id) => {
     document.getElementById(id)?.addEventListener("input", () => {
       markDirty();
+      setStatus("");
       renderProfileDetails();
     });
   });
 
   document.getElementById("profilePicInput")?.addEventListener("input", () => {
     markDirty();
+    setStatus("");
     updatePreview();
   });
 
@@ -475,20 +541,35 @@ document.addEventListener("DOMContentLoaded", async () => {
     try {
       const f = e.target.files?.[0];
       if (!f) return;
+      if (!/^image\//.test(f.type) || f.size > 8 * 1024 * 1024) {
+        showToast("Choose an image under 8 MB", "error");
+        return;
+      }
+      const localUrl = URL.createObjectURL(f);
+      setValue("profilePicInput", localUrl);
+      markDirty();
+      updatePreview();
+      setStatus("Uploading image...");
       const fd = new FormData();
       fd.append("file", f);
       const res = await mcPost("/api/upload/profile-image", fd);
       if (res.ok && res.data.url) {
         const base = window.MC_API || "http://localhost:5000";
-        document.getElementById("profilePicInput").value = base + res.data.url;
+        setValue("profilePicInput", base + res.data.url);
         markDirty();
         updatePreview();
+        setStatus("Image uploaded. Save profile to publish it.", "success");
         showToast("Image uploaded");
       } else {
+        setValue("profilePicInput", currentUser?.profilePic || "");
+        updatePreview();
+        setStatus(res.error || "Upload failed", "error");
         showToast(res.error || "Upload failed", "error");
       }
+      URL.revokeObjectURL(localUrl);
     } catch (err) {
       console.error("[PROFILE] Image upload error:", err);
+      setStatus("Upload failed.", "error");
       showToast("Upload failed", "error");
     }
     e.target.value = "";
@@ -498,19 +579,27 @@ document.addEventListener("DOMContentLoaded", async () => {
     try {
       const f = e.target.files?.[0];
       if (!f) return;
+      if (!/^(image\/|application\/pdf$)/.test(f.type) || f.size > 8 * 1024 * 1024) {
+        showToast("Choose a PDF or image under 8 MB", "error");
+        return;
+      }
+      setStatus("Uploading document...");
       const fd = new FormData();
       fd.append("file", f);
       const res = await mcPost("/api/upload/document", fd);
       if (res.ok && res.data.url) {
         const base = window.MC_API || "http://localhost:5000";
-        document.getElementById("resumeUrlInput").value = base + res.data.url;
+        setValue("resumeUrlInput", base + res.data.url);
         markDirty();
+        setStatus("Document uploaded. Save profile to publish it.", "success");
         showToast("Document uploaded");
       } else {
+        setStatus(res.error || "Upload failed", "error");
         showToast(res.error || "Upload failed", "error");
       }
     } catch (err) {
       console.error("[PROFILE] Resume upload error:", err);
+      setStatus("Upload failed.", "error");
       showToast("Upload failed", "error");
     }
     e.target.value = "";

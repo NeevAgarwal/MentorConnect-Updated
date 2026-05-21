@@ -142,7 +142,7 @@ async function handleSignup(e) {
       return;
     }
 
-    showToast("Signup successful! Welcome aboard 🎉");
+showToast("Signup successful! Welcome aboard.");
 
     setTimeout(() => {
       window.location.href = "dashboard.html";
@@ -206,7 +206,7 @@ async function handleLogin(e) {
       localStorage.setItem("mc_email", email);
     }
 
-    showToast("Login successful! Redirecting…");
+    showToast("Login successful! Redirecting...");
     setTimeout(() => { window.location.href = "dashboard.html"; }, 900);
 
   } catch (err) {

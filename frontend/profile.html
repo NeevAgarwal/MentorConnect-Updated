@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>My Profile — MentorConnect</title>
+  <title>My Profile - MentorConnect</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet" />
@@ -31,14 +31,14 @@
       <a href="dashboard.html" class="nav-item">Dashboard</a>
       <a href="sessions.html" class="nav-item">Sessions</a>
       <a href="chat.html" class="nav-item">Messages</a>
-      <a href="mentor-analytics.html" class="nav-item">Analytics</a>
+      <a href="mentor-analytics.html" class="nav-item" id="analyticsNavItem">Analytics</a>
       <a href="profile.html" class="nav-item active">My Profile</a>
     </nav>
     <div class="sidebar-user" id="sidebarUser">
       <div class="user-avatar" id="sidebarAvatar">?</div>
       <div class="user-info">
-        <div class="user-name" id="sidebarName">Loading…</div>
-        <div class="user-role" id="sidebarRole">—</div>
+        <div class="user-name" id="sidebarName">Loading...</div>
+        <div class="user-role" id="sidebarRole">-</div>
       </div>
     </div>
     <button class="logout-btn" id="logoutBtn">
@@ -75,7 +75,7 @@
           </div>
           <div class="completion-bar"><span id="completionBar"></span></div>
         </div>
-        <p class="preview-bio" id="previewBio">Your bio will appear here…</p>
+        <p class="preview-bio" id="previewBio">Your bio will appear here...</p>
         <div class="preview-skills" id="previewSkills"></div>
         <div class="preview-stats" id="previewStats"></div>
         <div class="preview-links" id="previewLinks"></div>
@@ -97,7 +97,7 @@
         <div class="form-section glass-card">
           <h2 class="section-title">Bio</h2>
           <textarea id="bioInput" class="profile-textarea" rows="5" maxlength="2000"
-            placeholder="Tell others about yourself, your background, what you're looking for…"></textarea>
+            placeholder="Tell others about yourself, your background, what you're looking for..."></textarea>
           <div class="char-count"><span id="bioCount">0</span>/2000</div>
         </div>
 
@@ -106,7 +106,7 @@
           <p class="section-sub">Press Enter or comma to add a skill</p>
           <div class="skills-input-wrap" id="skillsInputWrap">
             <div class="skills-tags" id="skillsTags"></div>
-            <input type="text" id="skillInput" class="skill-input-field" placeholder="e.g. React, Python…" />
+            <input type="text" id="skillInput" class="skill-input-field" placeholder="e.g. React, Python..." />
           </div>
         </div>
 
@@ -144,7 +144,7 @@
 
         <div class="form-section glass-card" id="studentPrefs">
           <h2 class="section-title">Student preferences (for matching)</h2>
-          <p class="section-sub">Interests — used for “Recommended mentors”</p>
+          <p class="section-sub">Interests used for Recommended mentors</p>
           <div class="skills-input-wrap"><div class="skills-tags" id="interestTags"></div><input type="text" id="interestInput" class="skill-input-field" placeholder="e.g. Startups" /></div>
           <p class="section-sub">Goals</p>
           <div class="skills-input-wrap"><div class="skills-tags" id="goalTags"></div><input type="text" id="goalInput" class="skill-input-field" placeholder="e.g. FAANG interview" /></div>
@@ -169,7 +169,7 @@
           </div>
           <div class="form-group">
             <label class="form-label">Or image URL</label>
-            <input type="url" id="profilePicInput" class="profile-input" placeholder="https://…" />
+            <input type="url" id="profilePicInput" class="profile-input" placeholder="https://..." />
           </div>
         </div>
 
@@ -181,7 +181,7 @@
           </div>
           <div class="form-group">
             <label class="form-label">Or document URL</label>
-            <input type="url" id="resumeUrlInput" class="profile-input" placeholder="https://…" />
+            <input type="url" id="resumeUrlInput" class="profile-input" placeholder="https://..." />
           </div>
         </div>
 
@@ -194,12 +194,13 @@
           </div>
           <div class="form-group">
             <label class="form-label">Experience / Background</label>
-            <input type="text" id="experienceInput" class="profile-input" placeholder="e.g. 3 years at Google, CS grad…" />
+            <input type="text" id="experienceInput" class="profile-input" placeholder="e.g. 3 years at Google, CS grad..." />
           </div>
           <div class="profile-timeline" id="profileTimeline"></div>
         </div>
 
         <!-- Save Button -->
+        <div id="profileStatus" class="profile-status" aria-live="polite"></div>
         <button class="save-btn" id="saveBtn">
           <span id="saveBtnText">Save Profile</span>
           <span id="saveSpinner" class="hidden">

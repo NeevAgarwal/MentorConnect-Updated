@@ -236,6 +236,18 @@
   border: 1px solid var(--glass-border); background: transparent;
   color: var(--text-muted); cursor: pointer;
 }
+.slot-empty,
+.profile-status {
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.profile-status {
+  min-height: 18px;
+  margin: 2px 0 8px;
+}
+.profile-status.error { color: var(--error); }
+.profile-status.success { color: var(--success); }
 .profile-timeline {
   display: flex;
   flex-direction: column;

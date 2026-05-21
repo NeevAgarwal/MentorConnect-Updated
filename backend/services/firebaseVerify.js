@@ -1,33 +1,7 @@
-const https = require("https");
-
-let admin = null;
-try {
-  admin = require("firebase-admin");
-} catch (_) {
-  admin = null;
-}
-
-const TOKENINFO = "https://oauth2.googleapis.com/tokeninfo?id_token=";
+const fs = require("fs");
+const admin = require("firebase-admin");
 
 let firebaseApp = null;
-
-function httpGetJson(url) {
-  return new Promise((resolve, reject) => {
-    https
-      .get(url, (res) => {
-        let body = "";
-        res.on("data", (c) => (body += c));
-        res.on("end", () => {
-          try {
-            resolve({ status: res.statusCode, json: JSON.parse(body) });
-          } catch (_) {
-            reject(new Error("Invalid Firebase token response"));
-          }
-        });
-      })
-      .on("error", reject);
-  });
-}
 
 function expectedAudiences(expectedAud) {
   return (process.env.FIREBASE_AUDIENCES || expectedAud || process.env.FIREBASE_PROJECT_ID || "")
@@ -36,46 +10,71 @@ function expectedAudiences(expectedAud) {
     .filter(Boolean);
 }
 
+function normalizeServiceAccount(raw) {
+  if (!raw || typeof raw !== "object") return null;
+  const serviceAccount = { ...raw };
+  if (typeof serviceAccount.private_key === "string") {
+    serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, "\n");
+  }
+  return serviceAccount;
+}
+
+function loadServiceAccount() {
+  if (process.env.FIREBASE_SERVICE_ACCOUNT_JSON) {
+    try {
+      return normalizeServiceAccount(JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON));
+    } catch (_) {
+      const err = new Error("Invalid FIREBASE_SERVICE_ACCOUNT_JSON");
+      err.status = 500;
+      err.code = "FIREBASE_ADMIN_CONFIG_INVALID";
+      throw err;
+    }
+  }
+
+  const credentialsPath = process.env.GOOGLE_APPLICATION_CREDENTIALS;
+  if (credentialsPath && fs.existsSync(credentialsPath)) {
+    try {
+      return normalizeServiceAccount(JSON.parse(fs.readFileSync(credentialsPath, "utf8")));
+    } catch (_) {
+      const err = new Error("Invalid GOOGLE_APPLICATION_CREDENTIALS service account file");
+      err.status = 500;
+      err.code = "FIREBASE_ADMIN_CONFIG_INVALID";
+      throw err;
+    }
+  }
+
+  return null;
+}
+
+function firebaseProjectId(serviceAccount) {
+  return (
+    process.env.FIREBASE_PROJECT_ID ||
+    process.env.GOOGLE_CLOUD_PROJECT ||
+    process.env.GCLOUD_PROJECT ||
+    (serviceAccount && serviceAccount.project_id) ||
+    "ideasphere-web"
+  );
+}
+
 function getFirebaseApp() {
-  if (!admin) return null;
   if (firebaseApp) return firebaseApp;
   if (admin.apps.length) {
     firebaseApp = admin.app();
     return firebaseApp;
   }
 
-  const projectId = process.env.FIREBASE_PROJECT_ID || "ideasphere-web";
-  const serviceAccountJson = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
+  const serviceAccount = loadServiceAccount();
+  const projectId = firebaseProjectId(serviceAccount);
   const options = { projectId };
 
-  if (serviceAccountJson) {
-    try {
-      options.credential = admin.credential.cert(JSON.parse(serviceAccountJson));
-    } catch (err) {
-      throw new Error("Invalid FIREBASE_SERVICE_ACCOUNT_JSON");
-    }
+  if (serviceAccount) {
+    options.credential = admin.credential.cert(serviceAccount);
   } else if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
     options.credential = admin.credential.applicationDefault();
   }
 
   firebaseApp = admin.initializeApp(options);
   return firebaseApp;
-}
-
-async function verifyWithTokenInfo(idToken) {
-  const { status, json } = await httpGetJson(TOKENINFO + encodeURIComponent(idToken));
-  if (status !== 200 || json.error) {
-    const err = new Error(json.error_description || json.error || "Invalid Firebase token");
-    err.status = 401;
-    err.code = "FIREBASE_TOKEN_INVALID";
-    throw err;
-  }
-  return {
-    uid: json.user_id || json.sub,
-    email: json.email || "",
-    email_verified: json.email_verified === "true" || json.email_verified === true,
-    aud: json.aud,
-  };
 }
 
 async function verifyFirebaseIdToken(idToken, expectedAud) {
@@ -87,18 +86,17 @@ async function verifyFirebaseIdToken(idToken, expectedAud) {
   }
 
   let decoded;
-  const app = getFirebaseApp();
-  if (app) {
-    try {
-      decoded = await app.auth().verifyIdToken(idToken, false);
-    } catch (err) {
-      const out = new Error("Invalid Firebase token");
-      out.status = 401;
-      out.code = "FIREBASE_TOKEN_INVALID";
-      throw out;
+  try {
+    decoded = await admin.auth(getFirebaseApp()).verifyIdToken(idToken, false);
+  } catch (err) {
+    if (err && err.code === "FIREBASE_ADMIN_CONFIG_INVALID") {
+      throw err;
     }
-  } else {
-    decoded = await verifyWithTokenInfo(idToken);
+    const out = new Error("Invalid Firebase token");
+    out.status = 401;
+    out.code = "FIREBASE_TOKEN_INVALID";
+    out.cause = err;
+    throw out;
   }
 
   const audiences = expectedAudiences(expectedAud);

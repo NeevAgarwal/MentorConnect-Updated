@@ -14,19 +14,30 @@ function notifyMcSessionChanged() {
   } catch (_) {}
 }
 
+function normalizeSessionPayload(raw) {
+  if (!raw || typeof raw !== "object") return null;
+  const data = raw.data && typeof raw.data === "object" ? raw.data : raw;
+  const token = data.token || raw.token || null;
+  const user = data.user || raw.user || null;
+  if (!token) return null;
+  return { token, user };
+}
+
 /**
  * Store JWT and user info from session response
  */
 function storeMcSession(data) {
-  if (data && data.success && data.token) {
-    mcGlobalJwt = data.token;
-    localStorage.setItem("mc_jwt", data.token);
-    if (data.user) {
-      mcGlobalUser = data.user;
-      localStorage.setItem("mc_role", data.user.role || "student");
-      localStorage.setItem("mc_name", data.user.name || "");
-      localStorage.setItem("mc_uid", data.user.firebaseUID || "");
-      if (data.user.isAdmin) localStorage.setItem("mc_admin", "1");
+  const session = normalizeSessionPayload(data);
+  if (session) {
+    mcGlobalJwt = session.token;
+    localStorage.setItem("mc_jwt", session.token);
+    if (session.user) {
+      mcGlobalUser = session.user;
+      localStorage.setItem("mc_role", session.user.role || "student");
+      localStorage.setItem("mc_name", session.user.name || "");
+      localStorage.setItem("mc_uid", session.user.firebaseUID || "");
+      if (session.user.email) localStorage.setItem("mc_email", session.user.email || "");
+      if (session.user.isAdmin) localStorage.setItem("mc_admin", "1");
       else localStorage.removeItem("mc_admin");
     }
     notifyMcSessionChanged();
@@ -57,6 +68,7 @@ async function syncMcJwt() {
     if (!res.ok) {
       const data = await res.json().catch(() => null);
       console.error("[API] JWT sync failed:", res.status, data?.message || data?.error || "");
+      clearMcSession();
       return null;
     }
 

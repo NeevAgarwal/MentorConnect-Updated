@@ -2,13 +2,33 @@ let apiMentors = [];
 let activeFilter = "All";
 let activeSort = "recommended";
 let searchTimer = null;
+let testimonialIndex = 0;
+const testimonials = [
+  {
+    quote: "I booked a product mentor, got a sharper roadmap, and walked into interviews with actual stories.",
+    name: "Riya S.",
+    role: "Final-year engineering student",
+  },
+  {
+    quote: "The chat and session flow made mentoring feel lightweight. Students came prepared and follow-ups were easy.",
+    name: "Kabir M.",
+    role: "Senior backend mentor",
+  },
+  {
+    quote: "Search by skills helped me find someone who had solved the exact career switch I was trying to make.",
+    name: "Naina P.",
+    role: "Career switcher",
+  },
+];
 
 document.addEventListener("DOMContentLoaded", () => {
   renderTags();
   renderDomainFilters();
   renderSteps();
+  renderTestimonials();
   loadMentorsFromApi();
-  document.getElementById("searchInput").addEventListener("input", () => {
+  setInterval(renderTestimonials, 5500);
+  document.getElementById("searchInput")?.addEventListener("input", () => {
     clearTimeout(searchTimer);
     searchTimer = setTimeout(loadMentorsFromApi, 350);
   });
@@ -24,13 +44,36 @@ async function loadMentorsFromApi() {
     const base = window.MC_API || "http://localhost:5000";
     const response = await fetch(`${base}/api/users/mentors?${params.toString()}`);
     const data = response.ok ? await response.json() : null;
-    apiMentors = data?.mentors || [];
+    const liveMentors = data?.mentors || [];
+    apiMentors = liveMentors.length ? liveMentors : fallbackMentors(q, activeFilter);
+    apiMentors
+      .map((m) => m.domain)
+      .filter(Boolean)
+      .forEach((domain) => {
+        if (!domains.includes(domain)) domains.push(domain);
+      });
+    renderDomainFilters();
     renderMentors(apiMentors);
     renderHomeActivity(apiMentors);
   } catch {
-    renderMentors(mentors);
-    renderHomeActivity(mentors);
+    const fallback = fallbackMentors(q, activeFilter);
+    renderMentors(fallback);
+    renderHomeActivity(fallback);
   }
+}
+
+function fallbackMentors(q = "", domain = "All") {
+  const term = String(q || "").toLowerCase();
+  return mentors.filter((m) => {
+    const domainOk = domain === "All" || m.domain === domain;
+    const searchOk =
+      !term ||
+      [m.name, m.role, m.company, m.domain, ...(m.skills || [])]
+        .join(" ")
+        .toLowerCase()
+        .includes(term);
+    return domainOk && searchOk;
+  });
 }
 
 function renderHomeActivity(list) {
@@ -79,13 +122,17 @@ function renderHomeActivity(list) {
 }
 
 function renderTags() {
-  document.getElementById("tagList").innerHTML = quickTags.map(
+  const el = document.getElementById("tagList");
+  if (!el) return;
+  el.innerHTML = quickTags.map(
     (tag) => `<span class="tag" onclick="setSearchAndFilter('${tag}')">${tag}</span>`
   ).join("");
 }
 
 function renderDomainFilters() {
-  document.getElementById("domainFilters").innerHTML = domains.map(
+  const el = document.getElementById("domainFilters");
+  if (!el) return;
+  el.innerHTML = domains.map(
     (d) =>
       `<button class="domain-btn ${d === activeFilter ? "active" : ""}" onclick="setDomain('${d}')">${d}</button>`
   ).join("");
@@ -93,6 +140,7 @@ function renderDomainFilters() {
 
 function renderMentors(list) {
   const grid = document.getElementById("mentorsGrid");
+  if (!grid) return;
   if (!list.length) {
     grid.innerHTML = `<p class="no-results">No mentors found. Try a different search.</p>`;
     return;
@@ -109,7 +157,7 @@ function renderMentors(list) {
         ? `<div class="avatar"><img src="${esc(m.profilePic)}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:inherit"/></div>`
         : `<div class="avatar">${initials}</div>`;
       const sk = (m.skills || []).slice(0, 4).map((s) => `<span class="skill-tag">${esc(s)}</span>`).join("");
-      const price = m.pricePerSession != null ? m.pricePerSession : "—";
+      const price = m.pricePerSession != null ? m.pricePerSession : m.price != null ? m.price : "-";
       const cur = m.currency || "INR";
       const rating = (m.ratingAvg || 0).toFixed(1);
       const match = m.matchScore != null ? `<span class="match-pill">${m.matchScore}% match</span>` : "";
@@ -144,11 +192,14 @@ function esc(s) {
   return String(s || "")
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
 }
 
 function renderSteps() {
-  document.getElementById("stepsGrid").innerHTML = steps
+  const el = document.getElementById("stepsGrid");
+  if (!el) return;
+  el.innerHTML = steps
     .map(
       (s, i) => `
     <div class="step">
@@ -160,6 +211,19 @@ function renderSteps() {
     )
     .join("");
   lucide.createIcons();
+}
+
+function renderTestimonials() {
+  const el = document.getElementById("testimonialCard");
+  if (!el || !testimonials.length) return;
+  const t = testimonials[testimonialIndex % testimonials.length];
+  testimonialIndex += 1;
+  el.innerHTML = `
+    <div class="testimonial-quote">"${esc(t.quote)}"</div>
+    <div class="testimonial-person">${esc(t.name)}</div>
+    <div class="testimonial-role">${esc(t.role)}</div>
+  `;
+  if (window.lucide) lucide.createIcons();
 }
 
 function filterMentors() {
@@ -174,7 +238,8 @@ function setDomain(d) {
 }
 
 function setSearchAndFilter(tag) {
-  document.getElementById("searchInput").value = tag;
+  const input = document.getElementById("searchInput");
+  if (input) input.value = tag;
   loadMentorsFromApi();
 }
 
@@ -252,10 +317,10 @@ const modalContent = {
     icon: "calendar",
     title: "How Booking Works",
     sections: [
-      { heading: "Step 1 — Find a mentor", body: "Browse the homepage or full dashboard marketplace." },
-      { heading: "Step 2 — Choose a slot", body: "Pick mentor-published slots or propose a datetime when slots are open." },
-      { heading: "Step 3 — Confirm", body: "Mentors approve requests; you receive notifications and email when SMTP is configured." },
-      { heading: "Step 4 — Join the session", body: "Use the secure Jitsi Meet room generated for each booking." },
+      { heading: "Step 1 - Find a mentor", body: "Browse the homepage or full dashboard marketplace." },
+      { heading: "Step 2 - Choose a slot", body: "Pick mentor-published slots or propose a datetime when slots are open." },
+      { heading: "Step 3 - Confirm", body: "Mentors approve requests; you receive notifications and email when SMTP is configured." },
+      { heading: "Step 4 - Join the session", body: "Use the secure Jitsi Meet room generated for each booking." },
       { heading: "After the session", body: "Leave a review; mentors mark complete to update analytics." },
     ],
   },
@@ -327,7 +392,7 @@ document.addEventListener("keydown", (e) => {
 
 function comingSoon(feature) {
   document.querySelectorAll(".nav-item").forEach((i) => i.classList.remove("open"));
-  showToast(`"${feature}" — use the dashboard for full browse.`);
+  showToast(`"${feature}" is available from the dashboard.`);
 }
 
 function showToast(msg, type = "default") {
