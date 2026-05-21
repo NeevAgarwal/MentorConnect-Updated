@@ -22,8 +22,22 @@
   border: 1px solid transparent;
 }
 .conv-item:hover, .conv-item.active { background: var(--gold-glass); border-color: var(--gold-border); }
-.conv-item-name { font-weight: 600; font-size: 14px; }
+.conv-item-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.conv-item-name { font-weight: 600; font-size: 14px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .conv-item-preview { font-size: 12px; color: var(--text-muted); margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.conv-unread {
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--gold);
+  color: #060B18;
+  font-size: 11px;
+  font-weight: 800;
+}
 
 .chat-main {
   flex: 1;
@@ -67,6 +81,12 @@
   border: 1px solid var(--glass-border);
 }
 .bubble-meta { font-size: 10px; color: var(--text-dim); margin-top: 6px; }
+.bubble.pending { opacity: 0.72; }
+.bubble.failed {
+  border-color: rgba(248,113,113,0.38);
+  background: rgba(248,113,113,0.08);
+}
+.bubble.failed .bubble-meta { color: #F87171; }
 
 .chat-composer {
   display: flex;

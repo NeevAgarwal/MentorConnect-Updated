@@ -3,9 +3,9 @@ const mongoose = require("mongoose");
 const { body, param, validationResult } = require("express-validator");
 const Booking = require("../models/Booking");
 const User = require("../models/User");
-const Notification = require("../models/Notification");
 const { requireAuth, requireStudent } = require("../middleware/authMiddleware");
 const { sendBookingConfirmation } = require("../services/emailService");
+const { createNotification } = require("../services/notificationService");
 
 const router = express.Router();
 
@@ -15,7 +15,7 @@ function jitsiLink(bookingId) {
 }
 
 async function notifyUser(uid, payload) {
-  await Notification.create({ userFirebaseUID: uid, ...payload });
+  await createNotification(uid, payload);
 }
 
 router.post(
@@ -41,6 +41,9 @@ router.post(
     const end = new Date(endTime);
     if (!(start < end)) {
       return res.status(400).json({ success: false, error: "Invalid time range" });
+    }
+    if (start <= new Date()) {
+      return res.status(400).json({ success: false, error: "Start time must be in the future" });
     }
 
     const mentor = await User.findOne({ firebaseUID: mentorFirebaseUID, role: "mentor", banned: { $ne: true } });
@@ -148,7 +151,19 @@ router.get("/mine", requireAuth, async (req, res) => {
   })
     .sort({ startTime: -1 })
     .lean();
-  res.json({ success: true, bookings: list });
+  const participantUids = [
+    ...new Set(list.flatMap((b) => [b.studentFirebaseUID, b.mentorFirebaseUID]).filter(Boolean)),
+  ];
+  const users = await User.find({ firebaseUID: { $in: participantUids } })
+    .select("firebaseUID name role profilePic")
+    .lean();
+  const userByUid = new Map(users.map((u) => [u.firebaseUID, u]));
+  const bookings = list.map((b) => ({
+    ...b,
+    student: userByUid.get(b.studentFirebaseUID) || null,
+    mentor: userByUid.get(b.mentorFirebaseUID) || null,
+  }));
+  res.json({ success: true, bookings });
 });
 
 router.patch(
@@ -262,6 +277,12 @@ router.patch(
 
     const start = new Date(req.body.startTime);
     const end = new Date(req.body.endTime);
+    if (!(start < end)) {
+      return res.status(400).json({ success: false, error: "Invalid time range" });
+    }
+    if (start <= new Date()) {
+      return res.status(400).json({ success: false, error: "Start time must be in the future" });
+    }
     const overlap = await Booking.findOne({
       _id: { $ne: booking._id },
       mentorFirebaseUID: booking.mentorFirebaseUID,

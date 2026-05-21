@@ -2,8 +2,8 @@ const express = require("express");
 const { query, body, validationResult } = require("express-validator");
 const Message = require("../models/Message");
 const User = require("../models/User");
-const Notification = require("../models/Notification");
 const { requireAuth } = require("../middleware/authMiddleware");
+const { createNotification } = require("../services/notificationService");
 
 const router = express.Router();
 
@@ -29,6 +29,11 @@ router.get("/conversations", requireAuth, async (req, res) => {
         conversationId: cid,
         otherUser: u || { firebaseUID: other, name: "User", profilePic: "", role: "student" },
         lastMessage: last,
+        unreadCount: await Message.countDocuments({
+          conversationId: cid,
+          senderFirebaseUID: { $ne: uid },
+          readBy: { $ne: uid },
+        }),
       };
     })
   );
@@ -95,8 +100,7 @@ router.post(
       /* socket optional */
     }
 
-    await Notification.create({
-      userFirebaseUID: toFirebaseUID,
+    await createNotification(toFirebaseUID, {
       type: "message",
       title: "New message",
       body: text.slice(0, 120),

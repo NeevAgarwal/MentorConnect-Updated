@@ -6,7 +6,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   const state = getAuthState();
   if (!state.firebaseUser) return;
 
-  const role = state.profile?.role || localStorage.getItem("mc_role") || "student";
+  const role = state.mcUser?.role || localStorage.getItem("mc_role") || "student";
   if (role !== "mentor") {
     document.getElementById("analyticsGate")?.classList.remove("hidden");
     return;

@@ -6,6 +6,8 @@ let allUsers = [];
 let mentorList = [];
 let debounceTimer = null;
 let currentMentorForBooking = null;
+let dashboardSocket = null;
+let dashboardSocketRefreshing = false;
 
 function showToast(msg, type = "success") {
   const existing = document.getElementById("mc-toast");
@@ -32,6 +34,65 @@ function escapeHtml(str) {
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
+}
+
+function toDatetimeLocalValue(date) {
+  const d = new Date(date);
+  if (Number.isNaN(d.getTime())) return "";
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function currentJwt() {
+  return localStorage.getItem("mc_jwt") || "";
+}
+
+async function refreshDashboardSocketJwt() {
+  if (!dashboardSocket || dashboardSocketRefreshing) return;
+  dashboardSocketRefreshing = true;
+  try {
+    const token = await syncMcJwt();
+    if (token) {
+      dashboardSocket.auth = { ...(dashboardSocket.auth || {}), token };
+      dashboardSocket.disconnect();
+      dashboardSocket.connect();
+    }
+  } finally {
+    dashboardSocketRefreshing = false;
+  }
+}
+
+function connectDashboardRealtime() {
+  if (dashboardSocket || typeof io === "undefined") return;
+  const token = currentJwt();
+  if (!token) return;
+  const base = window.MC_API || "http://localhost:5000";
+  dashboardSocket = io(base, {
+    transports: ["websocket", "polling"],
+    auth: { token },
+    reconnection: true,
+  });
+  dashboardSocket.on("connect_error", (err) => {
+    if (/unauthorized|invalid|expired/i.test(err?.message || "")) {
+      refreshDashboardSocketJwt();
+    }
+  });
+  dashboardSocket.io.on("reconnect_attempt", () => {
+    const token = currentJwt();
+    if (token) dashboardSocket.auth = { ...(dashboardSocket.auth || {}), token };
+  });
+  dashboardSocket.on("notification:new", () => {
+    loadNotificationsBadge();
+    if (document.getElementById("notifDropdown")?.classList.contains("open")) {
+      loadNotifList();
+    }
+  });
+  window.addEventListener("mc:session", () => {
+    const token = currentJwt();
+    if (!token || !dashboardSocket) return;
+    dashboardSocket.auth = { ...(dashboardSocket.auth || {}), token };
+    if (!dashboardSocket.connected) dashboardSocket.connect();
+  });
 }
 
 async function loadNotificationsBadge() {
@@ -88,6 +149,14 @@ async function loadNotifList() {
   }
 }
 
+function toggleNotifDropdown() {
+  const dd = document.getElementById("notifDropdown");
+  if (!dd) return;
+  const willOpen = !dd.classList.contains("open");
+  dd.classList.toggle("open", willOpen);
+  if (willOpen) loadNotifList();
+}
+
 document.addEventListener("click", (e) => {
   if (!e.target.closest(".notif-bell-wrap")) {
     document.getElementById("notifDropdown")?.classList.remove("open");
@@ -99,8 +168,9 @@ async function initAuthGuard() {
   const state = getAuthState();
   if (!state.firebaseUser) return;
 
-  const name = state.profile?.name || localStorage.getItem("mc_name") || state.firebaseUser.displayName || "User";
-  const role = state.profile?.role || localStorage.getItem("mc_role") || "student";
+  const profile = state.mcUser || {};
+  const name = profile.name || localStorage.getItem("mc_name") || state.firebaseUser.displayName || "User";
+  const role = profile.role || localStorage.getItem("mc_role") || "student";
 
   document.getElementById("sidebarName").textContent = name;
   document.getElementById("sidebarRole").textContent = role;
@@ -109,12 +179,13 @@ async function initAuthGuard() {
 
   const adminLink = document.getElementById("adminNavItem");
   if (adminLink) {
-    adminLink.style.display = state.profile?.isAdmin || localStorage.getItem("mc_admin") === "1" ? "flex" : "none";
+    adminLink.style.display = profile.isAdmin || localStorage.getItem("mc_admin") === "1" ? "flex" : "none";
   }
 
   loadUsers();
   loadMentors();
   loadNotificationsBadge();
+  connectDashboardRealtime();
 
   const theme = localStorage.getItem("mc_theme");
   if (theme === "light") document.body.classList.add("theme-light");
@@ -236,6 +307,36 @@ async function loadMentors() {
   }
 }
 
+function buildQuery() {
+  const q = new URLSearchParams();
+  const search = document.getElementById("mentorSearch")?.value?.trim();
+  const domain = document.getElementById("filterDomain")?.value?.trim();
+  const minRaw = document.getElementById("filterMinPrice")?.value;
+  const maxRaw = document.getElementById("filterMaxPrice")?.value;
+  const ratingRaw = document.getElementById("filterMinRating")?.value;
+  const minP = minRaw === "" || minRaw == null ? null : Number(minRaw);
+  const maxP = maxRaw === "" || maxRaw == null ? null : Number(maxRaw);
+  const minR = ratingRaw === "" || ratingRaw == null ? null : Number(ratingRaw);
+  const sort = document.getElementById("filterSort")?.value || "recommended";
+  const skills = document.getElementById("filterSkills")?.value?.trim();
+
+  if (search) q.set("q", search);
+  if (domain) q.set("domain", domain);
+  const hasMin = Number.isFinite(minP) && minP >= 0;
+  const hasMax = Number.isFinite(maxP) && maxP >= 0;
+  if (hasMin && hasMax && minP > maxP) {
+    q.set("minPrice", String(maxP));
+    q.set("maxPrice", String(minP));
+  } else {
+    if (hasMin) q.set("minPrice", String(minP));
+    if (hasMax) q.set("maxPrice", String(maxP));
+  }
+  if (Number.isFinite(minR) && minR >= 0 && minR <= 5) q.set("minRating", String(minR));
+  if (sort) q.set("sort", sort);
+  if (skills) q.set("skills", skills);
+  return q.toString();
+}
+
 function scheduleMentorReload() {
   clearTimeout(debounceTimer);
   debounceTimer = setTimeout(() => loadMentors(), 320);
@@ -332,7 +433,7 @@ function openBookingModal(mentorUid) {
       .slice(0, 24)
       .map(
         (d) =>
-          `<button type="button" class="slot-chip" data-start="${d.toISOString()}">${d.toLocaleString()}</button>`
+          `<button type="button" class="slot-chip" data-start="${escapeHtml(toDatetimeLocalValue(d))}">${escapeHtml(d.toLocaleString())}</button>`
       )
       .join("");
     slotsWrap.querySelectorAll(".slot-chip").forEach((b) => {
@@ -360,6 +461,10 @@ async function submitBooking() {
     return;
   }
   const startDate = new Date(startVal);
+  if (Number.isNaN(startDate.getTime()) || startDate <= new Date()) {
+    showToast("Choose a valid future start time", "error");
+    return;
+  }
   const endDate = new Date(startDate.getTime() + 60 * 60 * 1000);
   const topic = document.getElementById("bmTopic").value.trim();
   try {
@@ -413,13 +518,6 @@ document.addEventListener("DOMContentLoaded", () => {
     window.addEventListener("mc:session", () => loadNotificationsBadge());
     window.addEventListener("focus", () => loadNotificationsBadge());
   }
-
-  // Close notification dropdown when clicking outside
-  document.addEventListener("click", (e) => {
-    if (!e.target.closest(".notif-bell-wrap")) {
-      document.getElementById("notifDropdown")?.classList.remove("open");
-    }
-  });
 
   document.getElementById("themeToggle")?.addEventListener("click", () => {
     document.body.classList.toggle("theme-light");

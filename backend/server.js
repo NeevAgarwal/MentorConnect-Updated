@@ -87,7 +87,7 @@ app.use((err, _req, res, _next) => {
 
 async function sendSessionReminders() {
   const Booking = require("./models/Booking");
-  const Notification = require("./models/Notification");
+  const { createNotification } = require("./services/notificationService");
   const now = Date.now();
   const windowStart = new Date(now + 50 * 60 * 1000);
   const windowEnd = new Date(now + 70 * 60 * 1000);
@@ -98,15 +98,13 @@ async function sendSessionReminders() {
   }).limit(50);
 
   for (const b of due) {
-    await Notification.create({
-      userFirebaseUID: b.studentFirebaseUID,
+    await createNotification(b.studentFirebaseUID, {
       type: "reminder",
       title: "Session starting soon",
       body: `Your session begins at ${b.startTime.toISOString()}`,
       meta: { bookingId: String(b._id) },
     });
-    await Notification.create({
-      userFirebaseUID: b.mentorFirebaseUID,
+    await createNotification(b.mentorFirebaseUID, {
       type: "reminder",
       title: "Session starting soon",
       body: `You have a session at ${b.startTime.toISOString()}`,

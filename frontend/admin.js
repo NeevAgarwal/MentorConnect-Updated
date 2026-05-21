@@ -5,7 +5,11 @@ function esc(s) {
 function toast(m, e) {
   const t = document.createElement("div");
   t.textContent = m;
-  t.style.cssText = "position:fixed;bottom:24px;right:24px;z-index:9999;padding:12px 18px;border-radius:10px;background:"+(e?"#3a1520":"#152a1a");color:"+(e?"#F87171":"#6ee7b7");
+  t.style.cssText =
+    "position:fixed;bottom:24px;right:24px;z-index:9999;padding:12px 18px;border-radius:10px;background:" +
+    (e ? "#3a1520" : "#152a1a") +
+    ";color:" +
+    (e ? "#F87171" : "#6ee7b7");
   document.body.appendChild(t);
   setTimeout(() => t.remove(), 2800);
 }

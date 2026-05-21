@@ -7,6 +7,37 @@ const { sendWelcomeEmail } = require("../services/emailService");
 
 const router = express.Router();
 
+function normalizeStringArray(value, maxItems = 30, maxLength = 80) {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set();
+  const out = [];
+  value.forEach((item) => {
+    const s = String(item || "").trim().slice(0, maxLength);
+    const key = s.toLowerCase();
+    if (s && !seen.has(key) && out.length < maxItems) {
+      seen.add(key);
+      out.push(s);
+    }
+  });
+  return out;
+}
+
+function normalizeDateArray(value, maxItems = 200) {
+  if (!Array.isArray(value)) return [];
+  const now = Date.now();
+  const seen = new Set();
+  return value
+    .map((item) => new Date(item))
+    .filter((d) => !Number.isNaN(d.getTime()) && d.getTime() > now)
+    .sort((a, b) => a - b)
+    .filter((d) => {
+      const key = d.toISOString();
+      if (seen.has(key) || seen.size >= maxItems) return false;
+      seen.add(key);
+      return true;
+    });
+}
+
 router.post(
   "/register",
   body("idToken").isString().isLength({ min: 20, max: 12000 }),
@@ -279,6 +310,15 @@ router.put(
     allowed.forEach((k) => {
       if (req.body[k] !== undefined) patch[k] = req.body[k];
     });
+    ["skills", "expertiseTags", "interests", "goals"].forEach((k) => {
+      if (patch[k] !== undefined) patch[k] = normalizeStringArray(patch[k]);
+    });
+    if (patch.bookableSlots !== undefined) {
+      patch.bookableSlots = normalizeDateArray(patch.bookableSlots);
+    }
+    if (patch.weeklyAvailability !== undefined && Array.isArray(patch.weeklyAvailability)) {
+      patch.weeklyAvailability = patch.weeklyAvailability.slice(0, 50);
+    }
 
     const updated = await User.findOneAndUpdate(
       { firebaseUID: req.params.firebaseUID },

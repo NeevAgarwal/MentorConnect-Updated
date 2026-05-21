@@ -150,6 +150,11 @@
   box-shadow: 0 8px 28px rgba(212,175,55,0.35);
 }
 .save-btn:active { transform: translateY(0); }
+.save-btn:disabled {
+  opacity: 0.7;
+  cursor: wait;
+  transform: none;
+}
 
 /* Spinner */
 .spin { animation: spin 0.8s linear infinite; }

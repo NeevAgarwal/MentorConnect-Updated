@@ -5,6 +5,13 @@ import { setState } from "../state/store.js";
 
 let currentMentor = null;
 
+function toDatetimeLocalValue(date) {
+  const d = new Date(date);
+  if (Number.isNaN(d.getTime())) return "";
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 export function openBookingModal(mentorUid, mentorList) {
   currentMentor = mentorList.find((x) => x.firebaseUID === mentorUid);
   const m = currentMentor;
@@ -23,7 +30,7 @@ export function openBookingModal(mentorUid, mentorList) {
       .slice(0, 24)
       .map(
         (d) =>
-          `<button type="button" class="slot-chip" data-start="${escapeHtml(d.toISOString())}">${escapeHtml(
+          `<button type="button" class="slot-chip" data-start="${escapeHtml(toDatetimeLocalValue(d))}">${escapeHtml(
             d.toLocaleString()
           )}</button>`
       )
@@ -56,6 +63,10 @@ export async function submitBooking(onSuccess) {
     return;
   }
   const startDate = new Date(startVal);
+  if (Number.isNaN(startDate.getTime()) || startDate <= new Date()) {
+    showToast("Choose a valid future start time", "error");
+    return;
+  }
   const endDate = new Date(startDate.getTime() + 60 * 60 * 1000);
   const topic = document.getElementById("bmTopic").value.trim();
   try {

@@ -6,6 +6,8 @@ let interests = [];
 let goals = [];
 let bookableSlots = [];
 let selectedRole = "student";
+let profileDirty = false;
+let savingProfile = false;
 
 function escapeHtml(str) {
   return String(str || "")
@@ -47,6 +49,23 @@ function setRole(role) {
   if (ms) ms.style.display = role === "mentor" ? "block" : "none";
   const me = document.getElementById("mentorExtras");
   if (me) me.style.opacity = role === "mentor" ? "1" : "0.65";
+  const sp = document.getElementById("studentPrefs");
+  if (sp) sp.style.opacity = role === "student" ? "1" : "0.65";
+  markDirty();
+}
+
+function markDirty() {
+  profileDirty = true;
+}
+
+function setSaving(isSaving) {
+  savingProfile = isSaving;
+  const text = document.getElementById("saveBtnText");
+  const spinner = document.getElementById("saveSpinner");
+  const btn = document.getElementById("saveBtn");
+  if (text) text.style.display = isSaving ? "none" : "inline";
+  if (spinner) spinner.classList.toggle("hidden", !isSaving);
+  if (btn) btn.disabled = isSaving;
 }
 
 function tagRenderer(containerId, list, onRemove) {
@@ -94,11 +113,19 @@ function renderGoals() {
 }
 
 function addTo(list, raw, max, renderFn) {
-  const s = raw.trim().replace(/,$/, "").trim();
-  if (s && !list.includes(s) && list.length < max) {
-    list.push(s);
-    renderFn();
-  }
+  String(raw || "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .forEach((item) => {
+      const s = item.slice(0, 48);
+      const exists = list.some((x) => x.toLowerCase() === s.toLowerCase());
+      if (s && !exists && list.length < max) {
+        list.push(s);
+        markDirty();
+      }
+    });
+  renderFn();
 }
 
 function renderSlots() {
@@ -113,6 +140,7 @@ function renderSlots() {
   ul.querySelectorAll("button").forEach((b) => {
     b.addEventListener("click", () => {
       bookableSlots.splice(Number(b.getAttribute("data-si")), 1);
+      markDirty();
       renderSlots();
     });
   });
@@ -121,14 +149,41 @@ function renderSlots() {
 function updatePreview() {
   const bio = document.getElementById("bioInput")?.value || "";
   const pic = document.getElementById("profilePicInput")?.value || "";
-  document.getElementById("previewBio").textContent = bio || "Your bio will appear here…";
+  const previewBio = document.getElementById("previewBio");
+  if (previewBio) previewBio.textContent = bio || "Your bio will appear here...";
   const avatar = document.getElementById("previewAvatar");
+  if (!avatar) return;
   const initial = currentUser?.name?.charAt(0)?.toUpperCase() || "?";
   if (pic) {
-    avatar.innerHTML = `<img src="${escapeHtml(pic)}" alt="" onerror="this.parentNode.textContent='${initial}'"/>`;
+    const img = document.createElement("img");
+    img.src = pic;
+    img.alt = "";
+    img.addEventListener("error", () => {
+      avatar.textContent = initial;
+    });
+    avatar.textContent = "";
+    avatar.appendChild(img);
   } else {
     avatar.textContent = initial;
   }
+}
+
+function isSafeUrl(value) {
+  if (!value) return true;
+  try {
+    const u = new URL(value);
+    return u.protocol === "https:" || u.protocol === "http:";
+  } catch (_) {
+    return false;
+  }
+}
+
+function normalizeSlots(values) {
+  return [...new Set(values)]
+    .map((s) => new Date(s))
+    .filter((d) => !Number.isNaN(d.getTime()) && d > new Date())
+    .sort((a, b) => a - b)
+    .map((d) => d.toISOString());
 }
 
 async function loadProfile(uid) {
@@ -176,7 +231,7 @@ async function loadProfile(uid) {
     expertiseTags = [...(currentUser?.expertiseTags || [])];
     interests = [...(currentUser?.interests || [])];
     goals = [...(currentUser?.goals || [])];
-    bookableSlots = (currentUser?.bookableSlots || []).map((d) => new Date(d).toISOString());
+    bookableSlots = normalizeSlots(currentUser?.bookableSlots || []);
 
     renderSkillPills();
     renderExp();
@@ -189,6 +244,7 @@ async function loadProfile(uid) {
       previewRole.textContent = currentUser?.role || "student";
       previewRole.className = `card-role ${currentUser?.role || "student"}`;
     }
+    profileDirty = false;
   } catch (err) {
     console.error("[PROFILE] Error loading profile:", err);
     showToast("Could not load profile", "error");
@@ -196,9 +252,25 @@ async function loadProfile(uid) {
 }
 
 async function saveProfile() {
-  if (!currentUID) return;
-  document.getElementById("saveBtnText").style.display = "none";
-  document.getElementById("saveSpinner").classList.remove("hidden");
+  if (!currentUID || savingProfile) return;
+  setSaving(true);
+
+  const linkedin = document.getElementById("linkedinInput")?.value?.trim() || "";
+  const github = document.getElementById("githubInput")?.value?.trim() || "";
+  const profilePic = document.getElementById("profilePicInput")?.value?.trim() || "";
+  const resumeUrl = document.getElementById("resumeUrlInput")?.value?.trim() || "";
+  const price = Number(document.getElementById("priceInput")?.value || 0);
+
+  if (![linkedin, github, profilePic, resumeUrl].every(isSafeUrl)) {
+    showToast("Use valid http/https URLs for links and uploads", "error");
+    setSaving(false);
+    return;
+  }
+  if (!Number.isFinite(price) || price < 0 || price > 100000) {
+    showToast("Enter a valid session price", "error");
+    setSaving(false);
+    return;
+  }
 
   const body = {
     bio: document.getElementById("bioInput")?.value?.trim() || "",
@@ -207,15 +279,15 @@ async function saveProfile() {
     interests,
     goals,
     domain: document.getElementById("domainInput")?.value?.trim() || "",
-    linkedin: document.getElementById("linkedinInput")?.value?.trim() || "",
-    github: document.getElementById("githubInput")?.value?.trim() || "",
+    linkedin,
+    github,
     company: document.getElementById("companyInput")?.value?.trim() || "",
     experience: document.getElementById("experienceInput")?.value?.trim() || "",
-    profilePic: document.getElementById("profilePicInput")?.value?.trim() || "",
-    resumeUrl: document.getElementById("resumeUrlInput")?.value?.trim() || "",
-    pricePerSession: Number(document.getElementById("priceInput")?.value || 0),
+    profilePic,
+    resumeUrl,
+    pricePerSession: price,
     currency: document.getElementById("currencyInput")?.value?.trim() || "INR",
-    bookableSlots: bookableSlots.map((s) => new Date(s).toISOString()),
+    bookableSlots: normalizeSlots(bookableSlots),
     role: selectedRole,
   };
 
@@ -226,13 +298,12 @@ async function saveProfile() {
     }
     localStorage.setItem("mc_role", selectedRole);
     showToast("Profile saved!");
-    loadProfile(currentUID);
+    await loadProfile(currentUID);
   } catch (err) {
     console.error("[PROFILE] Save error:", err);
     showToast(err.message || "Failed to save", "error");
   } finally {
-    document.getElementById("saveBtnText").style.display = "inline";
-    document.getElementById("saveSpinner").classList.add("hidden");
+    setSaving(false);
   }
 }
 
@@ -266,11 +337,12 @@ document.addEventListener("DOMContentLoaded", async () => {
   const state = getAuthState();
   if (!state.firebaseUser) return;
   currentUID = state.firebaseUser.uid;
-  loadProfile(state.firebaseUser.uid);
+  await loadProfile(state.firebaseUser.uid);
 
   document.getElementById("bioInput")?.addEventListener("input", function () {
     document.getElementById("bioCount").textContent = String(this.value.length);
-    document.getElementById("previewBio").textContent = this.value || "Your bio will appear here…";
+    document.getElementById("previewBio").textContent = this.value || "Your bio will appear here...";
+    markDirty();
   });
 
   bindTagInput("skillInput", skills, 12, renderSkillPills);
@@ -278,14 +350,27 @@ document.addEventListener("DOMContentLoaded", async () => {
   bindTagInput("interestInput", interests, 15, renderInterest);
   bindTagInput("goalInput", goals, 15, renderGoals);
 
-  document.getElementById("profilePicInput")?.addEventListener("input", updatePreview);
+  ["linkedinInput", "experienceInput", "githubInput", "companyInput", "domainInput", "priceInput", "currencyInput", "resumeUrlInput"].forEach((id) => {
+    document.getElementById(id)?.addEventListener("input", markDirty);
+  });
+
+  document.getElementById("profilePicInput")?.addEventListener("input", () => {
+    markDirty();
+    updatePreview();
+  });
 
   document.getElementById("addSlotBtn")?.addEventListener("click", () => {
     const v = document.getElementById("slotPicker").value;
     if (!v) return;
-    const iso = new Date(v).toISOString();
+    const d = new Date(v);
+    if (Number.isNaN(d.getTime()) || d <= new Date()) {
+      showToast("Choose a future availability slot", "error");
+      return;
+    }
+    const iso = d.toISOString();
     if (!bookableSlots.includes(iso)) bookableSlots.push(iso);
     bookableSlots.sort();
+    markDirty();
     renderSlots();
   });
 
@@ -299,6 +384,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       if (res.ok && res.data.url) {
         const base = window.MC_API || "http://localhost:5000";
         document.getElementById("profilePicInput").value = base + res.data.url;
+        markDirty();
         updatePreview();
         showToast("Image uploaded");
       } else {
@@ -321,6 +407,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       if (res.ok && res.data.url) {
         const base = window.MC_API || "http://localhost:5000";
         document.getElementById("resumeUrlInput").value = base + res.data.url;
+        markDirty();
         showToast("Document uploaded");
       } else {
         showToast(res.error || "Upload failed", "error");
@@ -336,5 +423,10 @@ document.addEventListener("DOMContentLoaded", async () => {
   document.getElementById("logoutBtn")?.addEventListener("click", handleLogout);
   document.getElementById("hamburger")?.addEventListener("click", () => {
     document.getElementById("sidebar").classList.toggle("open");
+  });
+  window.addEventListener("beforeunload", (e) => {
+    if (!profileDirty || savingProfile) return;
+    e.preventDefault();
+    e.returnValue = "";
   });
 });
