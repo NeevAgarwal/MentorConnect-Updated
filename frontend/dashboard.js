@@ -803,7 +803,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const sidebar = document.getElementById("sidebar");
   hamburger?.addEventListener("click", () => sidebar?.classList.toggle("open"));
   document.addEventListener("click", (e) => {
-    if (window.innerWidth <= 900 && !sidebar?.contains(e.target) && e.target !== hamburger) {
+    if (window.innerWidth <= 900 && !sidebar?.contains(e.target) && !hamburger?.contains(e.target)) {
       sidebar?.classList.remove("open");
     }
   });

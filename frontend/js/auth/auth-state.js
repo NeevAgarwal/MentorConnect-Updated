@@ -13,13 +13,21 @@ let authInitPromise = null;
 function clearAuthStorage() {
   currentAuthUser = null;
   currentMcUser = null;
+  if (typeof clearMcSession === "function") {
+    clearMcSession();
+    return;
+  }
   if (typeof mcGlobalJwt !== "undefined") mcGlobalJwt = null;
+  if (typeof mcGlobalUser !== "undefined") mcGlobalUser = null;
   localStorage.removeItem("mc_jwt");
   localStorage.removeItem("mc_uid");
   localStorage.removeItem("mc_name");
   localStorage.removeItem("mc_role");
   localStorage.removeItem("mc_email");
   localStorage.removeItem("mc_admin");
+  try {
+    window.dispatchEvent(new CustomEvent("mc:session", { detail: { token: null, user: null } }));
+  } catch (_) {}
 }
 
 /**
@@ -31,6 +39,17 @@ async function initAuthState() {
   authInitPromise = new Promise((resolve) => {
     if (authStateReady) {
       resolve({ user: currentAuthUser, mcUser: currentMcUser });
+      return;
+    }
+
+    if (typeof auth === "undefined" || !auth?.onAuthStateChanged) {
+      clearAuthStorage();
+      authStateReady = true;
+      notifyAuthStateCallbacks();
+      resolve(null);
+      if (!isPublicPage()) {
+        window.location.href = "login.html?session=auth-unavailable";
+      }
       return;
     }
 

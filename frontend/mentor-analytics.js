@@ -1,18 +1,53 @@
 let revChart;
 let rateChart;
 
+function showBlock(id, display = "block") {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.style.display = display;
+  el.classList.remove("hidden");
+}
+
+function hideBlock(id) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.style.display = "none";
+}
+
+async function handleAnalyticsLogout() {
+  if (typeof clearAuthStorage === "function") clearAuthStorage();
+  else if (typeof clearMcSession === "function") clearMcSession();
+  if (typeof auth !== "undefined" && auth?.signOut) await auth.signOut();
+  location.href = "login.html";
+}
+
+function bindShellControls() {
+  document.getElementById("logoutBtn")?.addEventListener("click", handleAnalyticsLogout);
+  document.getElementById("hamburger")?.addEventListener("click", () => document.getElementById("sidebar")?.classList.toggle("open"));
+}
+
+function chartUnavailable() {
+  document.querySelectorAll(".chart-box").forEach((box) => {
+    box.innerHTML = '<div class="widget-empty">Charts are unavailable right now. Analytics cards are still up to date.</div>';
+  });
+}
+
 document.addEventListener("DOMContentLoaded", async () => {
+  bindShellControls();
   await initAuthState();
   const state = getAuthState();
   if (!state.firebaseUser) return;
 
+  hideBlock("analyticsGate");
+  hideBlock("analyticsBody");
+
   const role = state.mcUser?.role || localStorage.getItem("mc_role") || "student";
   if (role !== "mentor") {
-    document.getElementById("analyticsGate")?.classList.remove("hidden");
+    showBlock("analyticsGate");
     return;
   }
 
-  document.getElementById("analyticsBody")?.classList.remove("hidden");
+  showBlock("analyticsBody");
   const uid = state.firebaseUser.uid;
   const res = await mcGet(`/api/users/${uid}/analytics`);
   if (!res.ok) {
@@ -28,6 +63,11 @@ document.addEventListener("DOMContentLoaded", async () => {
       <div class="stat-card"><div class="stat-num">${(a.ratingAvg || 0).toFixed(1)}</div><div class="stat-label">Avg rating (${a.ratingCount || 0})</div></div>
       <div class="stat-card"><div class="stat-num">${a.upcomingConfirmed || 0}</div><div class="stat-label">Upcoming confirmed</div></div>
     `;
+
+  if (typeof Chart === "undefined") {
+    chartUnavailable();
+    return;
+  }
 
   const months = (a.revenueByMonth || []).map((r) => `${r._id.m}/${r._id.y}`);
   const revs = (a.revenueByMonth || []).map((r) => r.revenue || 0);
@@ -59,13 +99,4 @@ document.addEventListener("DOMContentLoaded", async () => {
       options: { plugins: { legend: { position: "bottom", labels: { color: "#ccc" } } } },
     });
   }
-
-  document.getElementById("logoutBtn")?.addEventListener("click", async () => {
-    if (typeof clearAuthStorage === "function") clearAuthStorage();
-    else if (typeof clearMcSession === "function") clearMcSession();
-    await auth.signOut();
-    location.href = "login.html";
-  });
-
-  document.getElementById("hamburger")?.addEventListener("click", () => document.getElementById("sidebar")?.classList.toggle("open"));
 });

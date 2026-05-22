@@ -102,7 +102,7 @@
         Continue with Google
       </button>
 
-      <p class="auth-footer-text">By continuing, you agree to our <a href="#">Terms</a> and <a href="#">Privacy Policy</a></p>
+      <p class="auth-footer-text">By continuing, you agree to our <a href="#" onclick="showPolicy('Terms'); return false;">Terms</a> and <a href="#" onclick="showPolicy('Privacy'); return false;">Privacy Policy</a></p>
     </div>
   </main>
 
@@ -117,23 +117,29 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r121/three.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/vanta@latest/dist/vanta.dots.min.js"></script>
 <script>
-  lucide.createIcons();
-  VANTA.DOTS({
-    el: "#vanta-bg",
-    mouseControls: true,
-    touchControls: true,
-    gyroControls: false,
-    minHeight: 200,
-    minWidth: 200,
-    scale: 1.0,
-    scaleMobile: 1.0,
-    color: 0xD4AF37,
-    color2: 0x1a3a6e,
-    backgroundColor: 0x060B18,
-    size: 2.8,
-    spacing: 28,
-    showLines: true
-  });
+  if (window.lucide) lucide.createIcons();
+  if (window.VANTA && typeof VANTA.DOTS === "function") {
+    try {
+      VANTA.DOTS({
+        el: "#vanta-bg",
+        mouseControls: true,
+        touchControls: true,
+        gyroControls: false,
+        minHeight: 200,
+        minWidth: 200,
+        scale: 1.0,
+        scaleMobile: 1.0,
+        color: 0xD4AF37,
+        color2: 0x1a3a6e,
+        backgroundColor: 0x060B18,
+        size: 2.8,
+        spacing: 28,
+        showLines: true
+      });
+    } catch (err) {
+      console.warn("[UI] Animated background unavailable:", err);
+    }
+  }
 </script>
 </body>
 </html>

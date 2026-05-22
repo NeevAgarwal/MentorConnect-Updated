@@ -18,6 +18,7 @@ const BookingSchema = new mongoose.Schema(
     mentorNotes: { type: String, default: "", maxlength: 500 },
     rescheduleOf: { type: mongoose.Schema.Types.ObjectId, ref: "Booking", default: null },
     reminder1hSent: { type: Boolean, default: false },
+    usedPublishedSlot: { type: Boolean, default: false },
   },
   { timestamps: true }
 );

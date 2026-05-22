@@ -18,6 +18,67 @@ async function notifyUser(uid, payload) {
   await createNotification(uid, payload);
 }
 
+async function sendBookingEmailSafe(to, details) {
+  if (!to) return;
+  try {
+    await sendBookingConfirmation(to, details);
+  } catch (err) {
+    console.warn("[booking] email notification skipped:", err.message || err);
+  }
+}
+
+function transactionUnsupported(err) {
+  const msg = String(err?.message || "");
+  return /Transaction numbers|replica set member|mongos|transactions are not supported/i.test(msg);
+}
+
+async function createBookingCore({ studentFirebaseUID, mentorFirebaseUID, start, end, topic, mentor, usedPublishedSlot }, session) {
+  const query = Booking.findOne({
+    mentorFirebaseUID,
+    status: { $in: ["pending", "confirmed"] },
+    startTime: { $lt: end },
+    endTime: { $gt: start },
+  });
+  const overlap = session ? await query.session(session) : await query;
+  if (overlap) throw new Error("DOUBLE_BOOK");
+
+  const payload = {
+    studentFirebaseUID,
+    mentorFirebaseUID,
+    startTime: start,
+    endTime: end,
+    status: "pending",
+    topic: topic || "",
+    meetingLink: "",
+    priceAtBooking: mentor.pricePerSession || 0,
+    usedPublishedSlot,
+  };
+
+  let created;
+  if (session) {
+    const docs = await Booking.create([payload], { session });
+    created = docs[0];
+  } else {
+    created = await Booking.create(payload);
+  }
+
+  if (usedPublishedSlot) {
+    const update = User.updateOne({ firebaseUID: mentorFirebaseUID }, { $pull: { bookableSlots: start } });
+    if (session) await update.session(session);
+    else await update;
+  }
+
+  return created;
+}
+
+async function releasePublishedSlot(booking) {
+  if (!booking.usedPublishedSlot) return;
+  await User.updateOne(
+    { firebaseUID: booking.mentorFirebaseUID },
+    { $addToSet: { bookableSlots: booking.startTime } }
+  );
+}
+
 router.post(
   "/",
   requireAuth,
@@ -51,59 +112,37 @@ router.post(
       return res.status(404).json({ success: false, error: "Mentor not found" });
     }
 
-    const slotOk =
-      (mentor.bookableSlots || []).some((d) => new Date(d).getTime() === start.getTime()) ||
-      (mentor.bookableSlots || []).length === 0;
+    const mentorSlots = mentor.bookableSlots || [];
+    const usedPublishedSlot = mentorSlots.some((d) => new Date(d).getTime() === start.getTime());
+    const slotOk = usedPublishedSlot || mentorSlots.length === 0;
 
-    if ((mentor.bookableSlots || []).length > 0 && !slotOk) {
+    if (mentorSlots.length > 0 && !slotOk) {
       return res.status(400).json({ success: false, error: "Selected slot is not available" });
     }
 
-    const session = await mongoose.startSession();
     let created;
+    const bookingArgs = { studentFirebaseUID, mentorFirebaseUID, start, end, topic, mentor, usedPublishedSlot };
+    const session = await mongoose.startSession();
     try {
       await session.withTransaction(async () => {
-        const overlap = await Booking.findOne({
-          mentorFirebaseUID,
-          status: { $in: ["pending", "confirmed"] },
-          startTime: { $lt: end },
-          endTime: { $gt: start },
-        }).session(session);
-        if (overlap) {
-          throw new Error("DOUBLE_BOOK");
-        }
-
-        const meetingLink = "";
-        const doc = await Booking.create(
-          [
-            {
-              studentFirebaseUID,
-              mentorFirebaseUID,
-              startTime: start,
-              endTime: end,
-              status: "pending",
-              topic: topic || "",
-              meetingLink,
-              priceAtBooking: mentor.pricePerSession || 0,
-            },
-          ],
-          { session }
-        );
-        created = doc[0];
-
-        if ((mentor.bookableSlots || []).length > 0) {
-          await User.updateOne(
-            { firebaseUID: mentorFirebaseUID },
-            { $pull: { bookableSlots: start } },
-            { session }
-          );
-        }
+        created = await createBookingCore(bookingArgs, session);
       });
     } catch (e) {
       if (e.message === "DOUBLE_BOOK" || e.code === 11000) {
         return res.status(409).json({ success: false, error: "Slot already booked" });
       }
-      return res.status(500).json({ success: false, error: e.message });
+      if (transactionUnsupported(e)) {
+        try {
+          created = await createBookingCore(bookingArgs, null);
+        } catch (fallbackErr) {
+          if (fallbackErr.message === "DOUBLE_BOOK" || fallbackErr.code === 11000) {
+            return res.status(409).json({ success: false, error: "Slot already booked" });
+          }
+          return res.status(500).json({ success: false, error: fallbackErr.message });
+        }
+      } else {
+        return res.status(500).json({ success: false, error: e.message });
+      }
     } finally {
       await session.endSession();
     }
@@ -111,10 +150,6 @@ router.post(
     if (!created) {
       return res.status(500).json({ success: false, error: "Booking create failed" });
     }
-
-    const link = jitsiLink(created._id);
-    created.meetingLink = link;
-    await created.save();
 
     await notifyUser(mentorFirebaseUID, {
       type: "booking",
@@ -130,15 +165,13 @@ router.post(
     });
 
     const student = await User.findOne({ firebaseUID: studentFirebaseUID });
-    if (student?.email) {
-      await sendBookingConfirmation(student.email, {
-        mentorName: mentor.name,
-        studentName: student.name,
-        startTime: created.startTime.toISOString(),
-        meetingLink: link,
-        status: "pending",
-      });
-    }
+    await sendBookingEmailSafe(student?.email, {
+      mentorName: mentor.name,
+      studentName: student?.name || "Student",
+      startTime: created.startTime.toISOString(),
+      meetingLink: "",
+      status: "pending",
+    });
 
     return res.status(201).json({ success: true, booking: created });
   }
@@ -211,13 +244,7 @@ router.patch(
     await booking.save();
 
     if (req.body.status === "rejected" || req.body.status === "cancelled") {
-      const mentor = await User.findOne({ firebaseUID: booking.mentorFirebaseUID });
-      if (mentor && (mentor.bookableSlots || []).length >= 0) {
-        await User.updateOne(
-          { firebaseUID: booking.mentorFirebaseUID },
-          { $addToSet: { bookableSlots: booking.startTime } }
-        );
-      }
+      await releasePublishedSlot(booking);
     }
 
     if (req.body.status === "completed") {
@@ -242,15 +269,13 @@ router.patch(
 
     const student = await User.findOne({ firebaseUID: booking.studentFirebaseUID });
     const mentorUser = await User.findOne({ firebaseUID: booking.mentorFirebaseUID });
-    if (student?.email && mentorUser) {
-      await sendBookingConfirmation(student.email, {
-        mentorName: mentorUser.name,
-        studentName: student.name,
-        startTime: booking.startTime.toISOString(),
-        meetingLink: booking.meetingLink,
-        status: booking.status,
-      });
-    }
+    await sendBookingEmailSafe(student?.email, {
+      mentorName: mentorUser?.name || "Mentor",
+      studentName: student?.name || "Student",
+      startTime: booking.startTime.toISOString(),
+      meetingLink: booking.meetingLink,
+      status: booking.status,
+    });
 
     res.json({ success: true, booking });
   }
@@ -292,14 +317,12 @@ router.patch(
     });
     if (overlap) return res.status(409).json({ success: false, error: "Slot conflict" });
 
-    await User.updateOne(
-      { firebaseUID: booking.mentorFirebaseUID },
-      { $addToSet: { bookableSlots: booking.startTime } }
-    );
+    await releasePublishedSlot(booking);
 
     booking.startTime = start;
     booking.endTime = end;
     booking.meetingLink = jitsiLink(booking._id);
+    booking.usedPublishedSlot = false;
     await booking.save();
 
     await notifyUser(booking.studentFirebaseUID, {

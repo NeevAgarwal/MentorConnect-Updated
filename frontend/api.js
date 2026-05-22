@@ -112,6 +112,30 @@ function isPublicApi(path) {
   );
 }
 
+function isMcPublicPage() {
+  const filename = window.location.pathname.split("/").pop() || "index.html";
+  return ["", "index.html", "login.html", "signup.html", "forgot-password.html", "app.html"].includes(filename);
+}
+
+function recoverFromAuthFailure(data, status) {
+  const code = data?.code || "";
+  const shouldClear =
+    status === 401 ||
+    code === "USER_BANNED" ||
+    code === "USER_NOT_FOUND" ||
+    code === "TOKEN_INVALID" ||
+    code === "TOKEN_EXPIRED";
+  if (!shouldClear) return;
+  clearMcSession();
+  if (typeof auth !== "undefined" && auth.currentUser) {
+    auth.signOut().catch((err) => console.warn("[API] Sign-out after auth failure failed:", err));
+  }
+  if (!isMcPublicPage()) {
+    const target = code === "USER_BANNED" ? "login.html?session=suspended" : "login.html?session=expired";
+    window.location.href = target;
+  }
+}
+
 async function waitForAuthIfNeeded(path, options) {
   if (options.skipAuthWait || options.authRequired === false || isPublicApi(path)) return;
   if (window.MC_AUTH_READY && typeof window.MC_AUTH_READY.then === "function") {
@@ -186,15 +210,17 @@ async function mcFetch(path, options = {}) {
     // Apply timeout if specified (default 30s)
     const timeoutMs = timeout || 30000;
     const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-
-    const response = await fetch(base + path, {
-      ...fetchOptions,
-      headers,
-      body: isJson ? JSON.stringify(options.body) : options.body,
-      signal: controller.signal,
-    });
-
-    clearTimeout(timeoutId);
+    let response;
+    try {
+      response = await fetch(base + path, {
+        ...fetchOptions,
+        headers,
+        body: isJson ? JSON.stringify(options.body) : options.body,
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timeoutId);
+    }
 
     // Handle auth token expiration - retry with fresh JWT
     if (response.status === 401 && !_retried && !skipAuthRetry && typeof auth !== "undefined" && auth.currentUser) {
@@ -215,6 +241,7 @@ async function mcFetch(path, options = {}) {
     // Handle errors
     if (!ok) {
       const error = data.error || data.message || "API_ERROR";
+      recoverFromAuthFailure(data, status);
       return {
         ok: false,
         status,

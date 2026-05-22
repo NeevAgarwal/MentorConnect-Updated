@@ -187,9 +187,22 @@ function replaceOptimisticMessage(clientId, message) {
   return true;
 }
 
+function replaceMatchingPendingEcho(message) {
+  if (!message || message.senderFirebaseUID !== auth.currentUser?.uid) return false;
+  for (const [clientId, pending] of pendingByClientId.entries()) {
+    const pendingPeer = typeof pending === "string" ? pending : pending?.toFirebaseUID;
+    const pendingText = typeof pending === "string" ? "" : pending?.text || "";
+    if (pendingPeer === activeWith && (!pendingText || pendingText === message.text)) {
+      return replaceOptimisticMessage(clientId, message);
+    }
+  }
+  return false;
+}
+
 function markOptimisticFailed(clientId, retryPayload) {
   const thread = document.getElementById("msgThread");
   const el = thread ? Array.from(thread.querySelectorAll(".bubble")).find((node) => node.getAttribute("data-msg-id") === clientId) : null;
+  pendingByClientId.delete(clientId);
   if (retryPayload) failedByClientId.set(clientId, retryPayload);
   if (!el) return;
   el.classList.remove("pending");
@@ -306,6 +319,10 @@ function connectSocket() {
       if (!payload) return;
       const cidParts = (payload.conversationId || "").split("__");
       if (activeWith && cidParts.includes(activeWith)) {
+        if (replaceMatchingPendingEcho(payload.message)) {
+          loadSidebar();
+          return;
+        }
         appendMessage(payload.message);
         clearActiveUnread();
         if (payload.message?.senderFirebaseUID !== auth.currentUser?.uid) {
@@ -352,7 +369,7 @@ async function sendMessage() {
     createdAt: new Date().toISOString(),
     pending: true,
   });
-  pendingByClientId.set(clientId, activeAtSend);
+  pendingByClientId.set(clientId, { toFirebaseUID: activeAtSend, text });
   if (input) input.value = "";
   updateComposerState();
 

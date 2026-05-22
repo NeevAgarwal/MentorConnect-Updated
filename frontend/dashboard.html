@@ -241,10 +241,15 @@
   </main>
 
   <!-- Firebase compat SDKs -->
+  <script src="config.js"></script>
   <script src="https://cdn.socket.io/4.8.1/socket.io.min.js"></script>
+  <script>
+    if (!window.io) {
+      document.write('<script src="' + (window.MC_API || 'http://localhost:5000') + '/socket.io/socket.io.js"><\/script>');
+    }
+  </script>
   <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
-  <script src="config.js"></script>
   <script src="api.js"></script>
   <script src="firebase-config.js"></script>
   <script src="js/auth/auth-state.js"></script>

@@ -8,7 +8,13 @@ const firebaseConfig = {
 };
 
 // ── Initialize Firebase ──
-firebase.initializeApp(firebaseConfig);
+let auth = null;
+
+if (typeof firebase !== "undefined" && firebase?.initializeApp && firebase?.auth) {
+  firebase.initializeApp(firebaseConfig);
+  auth = firebase.auth();
+} else {
+  console.error("[Firebase] SDK unavailable. Authentication actions will be disabled until it loads.");
+}
 
 // ── Auth instance (used across all pages) ──
-const auth = firebase.auth();

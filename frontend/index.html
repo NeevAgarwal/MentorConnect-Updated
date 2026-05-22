@@ -38,7 +38,7 @@
           Become a Mentor <i data-lucide="chevron-down" class="nav-arrow-icon"></i>
         </span>
         <div class="nav-dropdown" id="dropdownBecomeMentor">
-          <a class="dropdown-item" onclick="comingSoon('How it Works')"><i data-lucide="info"></i> How it Works</a>
+          <a class="dropdown-item" onclick="openModal('For Mentors')"><i data-lucide="info"></i> How it Works</a>
           <a class="dropdown-item" onclick="openModal('Mentor Profile Tips')"><i data-lucide="clipboard-list"></i> Profile Tips</a>
           <a class="dropdown-item" onclick="openModal('Earnings')"><i data-lucide="trending-up"></i> Earnings</a>
           <a class="dropdown-item" href="signup.html"><i data-lucide="rocket"></i> Apply Now</a>
@@ -148,7 +148,7 @@
       <h2 class="text-gold">Ready to find your mentor?</h2>
       <p>Join 12,000+ students already getting personalized guidance on IdeaSphere.</p>
       <div class="cta-buttons">
-        <button class="btn-gold btn-lg" onclick="window.location.href='signup.html'">Get Started Free</button>
+        <button class="btn-gold btn-lg" onclick="goPrimaryCta()">Get Started Free</button>
         <button class="btn-outline btn-lg" onclick="searchAndScroll()">Browse Mentors</button>
       </div>
     </div>
@@ -161,9 +161,9 @@
       <span>IdeaSphere 2026</span>
     </div>
     <div class="footer-links">
-      <a href="#">Privacy</a>
-      <a href="#">Terms</a>
-      <a href="#">Contact</a>
+      <a href="#" onclick="openModal('Privacy'); return false;">Privacy</a>
+      <a href="#" onclick="openModal('Terms'); return false;">Terms</a>
+      <a href="#" onclick="openModal('Contact'); return false;">Contact</a>
     </div>
   </footer>
 
@@ -182,23 +182,29 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r121/three.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/vanta@latest/dist/vanta.dots.min.js"></script>
   <script>
-    lucide.createIcons();
-    VANTA.DOTS({
-      el: "#vanta-bg",
-      mouseControls: true,
-      touchControls: true,
-      gyroControls: false,
-      minHeight: 200,
-      minWidth: 200,
-      scale: 1.0,
-      scaleMobile: 1.0,
-      color: 0xD4AF37,        // gold dots
-      color2: 0x1a3a6e,       // midnight blue dots
-      backgroundColor: 0x060B18,
-      size: 2.8,
-      spacing: 28,
-      showLines: true
-    });
+    if (window.lucide) lucide.createIcons();
+    if (window.VANTA && typeof VANTA.DOTS === "function") {
+      try {
+        VANTA.DOTS({
+          el: "#vanta-bg",
+          mouseControls: true,
+          touchControls: true,
+          gyroControls: false,
+          minHeight: 200,
+          minWidth: 200,
+          scale: 1.0,
+          scaleMobile: 1.0,
+          color: 0xD4AF37,
+          color2: 0x1a3a6e,
+          backgroundColor: 0x060B18,
+          size: 2.8,
+          spacing: 28,
+          showLines: true
+        });
+      } catch (err) {
+        console.warn("[UI] Animated background unavailable:", err);
+      }
+    }
   </script>
 </body>
 </html>

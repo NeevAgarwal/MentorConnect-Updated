@@ -161,6 +161,8 @@ function renderMentors(list) {
       const cur = m.currency || "INR";
       const rating = (m.ratingAvg || 0).toFixed(1);
       const match = m.matchScore != null ? `<span class="match-pill">${m.matchScore}% match</span>` : "";
+      const ctaHref = homeCtaHref();
+      const ctaLabel = isHomeAuthed() ? "Open app" : "Get started";
       return `
     <div class="mentor-card">
       <div class="card-top">
@@ -181,7 +183,7 @@ function renderMentors(list) {
       <div class="skills">${sk || '<span class="skill-tag">Skills TBD</span>'}</div>
       <div class="card-footer">
         <div class="price">${cur} ${price}<span>/session</span></div>
-        <button class="btn-gold" style="padding:9px 22px; font-size:13px;" onclick="location.href='signup.html'">Get started</button>
+        <button class="btn-gold" style="padding:9px 22px; font-size:13px;" onclick="location.href='${ctaHref}'">${ctaLabel}</button>
       </div>
     </div>`;
     })
@@ -210,7 +212,7 @@ function renderSteps() {
     </div>`
     )
     .join("");
-  lucide.createIcons();
+  if (window.lucide) lucide.createIcons();
 }
 
 function renderTestimonials() {
@@ -228,6 +230,18 @@ function renderTestimonials() {
 
 function filterMentors() {
   loadMentorsFromApi();
+}
+
+function isHomeAuthed() {
+  return Boolean(localStorage.getItem("mc_jwt") || (typeof auth !== "undefined" && auth?.currentUser));
+}
+
+function homeCtaHref() {
+  return isHomeAuthed() ? "dashboard.html" : "signup.html";
+}
+
+function goPrimaryCta() {
+  window.location.href = homeCtaHref();
 }
 
 function setDomain(d) {
@@ -335,6 +349,32 @@ const modalContent = {
       { heading: "Deploy anywhere", body: "Configure MONGO_URI, JWT_SECRET, SMTP, and CORS_ORIGIN for production." },
     ],
   },
+  Privacy: {
+    icon: "shield-check",
+    title: "Privacy",
+    sections: [
+      { heading: "What is stored", body: "MentorConnect stores account, profile, booking, chat, review, and notification data needed for the demo flow." },
+      { heading: "Access", body: "Protected pages require Firebase sign-in plus a backend JWT, and banned or deleted users are signed out." },
+      { heading: "Uploads", body: "Profile images and documents are stored in the configured backend uploads directory for this demo." },
+    ],
+  },
+  Terms: {
+    icon: "file-check",
+    title: "Terms",
+    sections: [
+      { heading: "Use", body: "Use sessions, chat, reviews, and bookings respectfully and only for mentorship-related activity." },
+      { heading: "Bookings", body: "Mentors may accept, reject, reschedule, or cancel requests according to availability." },
+      { heading: "Demo scope", body: "This app is ready for demonstration use but still needs production legal copy before launch." },
+    ],
+  },
+  Contact: {
+    icon: "mail",
+    title: "Contact",
+    sections: [
+      { heading: "Support", body: "For demo support, use the dashboard, profile, sessions, and chat flows to validate user issues." },
+      { heading: "Administration", body: "Admin users can review users and bookings from the Admin page when ADMIN_EMAILS or MongoDB admin flags are configured." },
+    ],
+  },
 };
 
 function openModal(key) {
@@ -375,7 +415,7 @@ function openModal(key) {
   document.body.appendChild(modal);
   requestAnimationFrame(() => modal.classList.add("open"));
   document.body.style.overflow = "hidden";
-  lucide.createIcons();
+  if (window.lucide) lucide.createIcons();
 }
 
 function closeModal() {

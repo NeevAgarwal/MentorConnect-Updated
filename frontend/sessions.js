@@ -162,7 +162,7 @@ function render() {
       const start = compactDate(b.startTime);
       const endDate = new Date(b.endTime);
       const end = Number.isNaN(endDate.getTime()) ? "" : endDate.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-      const link = b.meetingLink
+      const link = b.meetingLink && b.status === "confirmed"
         ? `<a class="connect-btn" href="${esc(b.meetingLink)}" target="_blank" rel="noopener">Join video</a>`
         : "";
       let actions = "";

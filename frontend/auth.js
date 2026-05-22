@@ -57,19 +57,28 @@ function showToast(msg, type = "success") {
 // ─────────────────────────────────────────────────────────
 
 function showErr(id, msg) {
-  const el = document.getElementById(id);
+  const el = document.getElementById(resolveErrId(id));
   if (el) el.innerText = msg;
 }
 
 function clearErr(id) {
-  const el = document.getElementById(id);
+  const el = document.getElementById(resolveErrId(id));
   if (el) el.innerText = "";
+}
+
+function resolveErrId(id) {
+  const aliases = {
+    signupPasswordErr: "signupPassErr",
+    confirmPasswordErr: "confirmPassErr",
+  };
+  return document.getElementById(id) ? id : aliases[id] || id;
 }
 
 function setLoading(textId, spinnerId, loading) {
   const text    = document.getElementById(textId);
   const spinner = document.getElementById(spinnerId);
   if (!text || !spinner) return;
+  const button = text.closest("button") || spinner.closest("button");
   if (loading) {
     text.style.display = "none";
     spinner.classList.remove("hidden");
@@ -77,6 +86,67 @@ function setLoading(textId, spinnerId, loading) {
     text.style.display = "inline";
     spinner.classList.add("hidden");
   }
+  if (button) button.disabled = !!loading;
+}
+
+function authUnavailableMessage() {
+  return "Authentication is still loading. Check your connection and try again.";
+}
+
+function isAuthAvailable() {
+  return typeof auth !== "undefined" && auth;
+}
+
+function firebaseAuthNamespace() {
+  return typeof firebase !== "undefined" && firebase?.auth ? firebase.auth : null;
+}
+
+function requireAuthAvailable() {
+  if (isAuthAvailable()) return true;
+  showToast(authUnavailableMessage(), "error");
+  return false;
+}
+
+function setAuthPersistenceFromForm() {
+  const remember = document.getElementById("rememberMe");
+  const fbAuth = firebaseAuthNamespace();
+  if (!remember || !isAuthAvailable() || !auth.setPersistence || !fbAuth?.Auth?.Persistence) return Promise.resolve();
+  const mode = remember.checked ? fbAuth.Auth.Persistence.LOCAL : fbAuth.Auth.Persistence.SESSION;
+  return auth.setPersistence(mode).catch((err) => {
+    console.warn("[AUTH] Could not set persistence:", err);
+  });
+}
+
+async function registerBackendUser(user, role = "student", fallbackName = "User") {
+  const idToken = await user.getIdToken(true);
+  const email = user.email || `firebase_${user.uid}@ideasphere-web.firebaseapp.com`;
+  const name = user.displayName || fallbackName || (email.includes("@") ? email.split("@")[0] : "User");
+  const res = await mcPost("/api/users/register", {
+    idToken,
+    name,
+    email,
+    firebaseUID: user.uid,
+    role,
+  });
+  if (!res.ok) throw new Error(res.error || "Could not create profile");
+  return res.data.user || res.data;
+}
+
+async function enterAppAfterProviderAuth(user, role = "student") {
+  await registerBackendUser(user, role, user.displayName || "User");
+  const sessionToken = await syncMcJwt();
+  if (!sessionToken) {
+    try { await auth.signOut(); } catch (_) {}
+    throw new Error("Could not create a secure session. Please try again.");
+  }
+  const profileRes = await mcGet(`/api/users/${user.uid}`);
+  const profile = profileRes.ok ? profileRes.data.user : null;
+  localStorage.setItem("mc_uid", user.uid);
+  localStorage.setItem("mc_name", profile?.name || user.displayName || "User");
+  localStorage.setItem("mc_email", profile?.email || user.email || "");
+  localStorage.setItem("mc_role", profile?.role || role);
+  if (profile?.isAdmin) localStorage.setItem("mc_admin", "1");
+  else localStorage.removeItem("mc_admin");
 }
 
 // ─────────────────────────────────────────────────────────
@@ -85,6 +155,7 @@ function setLoading(textId, spinnerId, loading) {
 
 async function handleSignup(e) {
   e.preventDefault();
+  if (!requireAuthAvailable()) return;
 
   clearErr("firstNameErr");
   clearErr("lastNameErr");
@@ -101,11 +172,13 @@ async function handleSignup(e) {
   if (!firstName)               { showErr("firstNameErr", "First name required"); return; }
   if (!lastName)                { showErr("lastNameErr", "Last name required"); return; }
   if (!email)                   { showErr("signupEmailErr", "Email required"); return; }
-  if (password.length < 6)      { showErr("signupPasswordErr", "Password too short (min 6)"); return; }
+  if (password.length < 8)      { showErr("signupPasswordErr", "Password too short (min 8)"); return; }
   if (password !== confirmPassword) { showErr("confirmPasswordErr", "Passwords do not match"); return; }
 
   try {
     setLoading("signupBtnText", "signupSpinner", true);
+
+    await setAuthPersistenceFromForm();
 
     // Firebase signup
     const userCredential = await auth.createUserWithEmailAndPassword(email, password);
@@ -142,7 +215,7 @@ async function handleSignup(e) {
       return;
     }
 
-showToast("Signup successful! Welcome aboard.");
+    showToast("Signup successful! Welcome aboard.");
 
     setTimeout(() => {
       window.location.href = "dashboard.html";
@@ -161,6 +234,7 @@ showToast("Signup successful! Welcome aboard.");
 
 async function handleLogin(e) {
   e.preventDefault();
+  if (!requireAuthAvailable()) return;
 
   const email    = document.getElementById("loginEmail")?.value?.trim();
   const password = document.getElementById("loginPassword")?.value;
@@ -173,6 +247,7 @@ async function handleLogin(e) {
 
   try {
     setLoading(textId, spinId, true);
+    await setAuthPersistenceFromForm();
 
     const userCredential = await auth.signInWithEmailAndPassword(email, password);
     const user = userCredential.user;
@@ -220,20 +295,138 @@ async function handleEmailLogin(e) {
   return handleLogin(e);
 }
 
+function switchTab(tab) {
+  const emailForm = document.getElementById("emailForm");
+  const otpForm = document.getElementById("otpForm");
+  const tabEmail = document.getElementById("tabEmail");
+  const tabOtp = document.getElementById("tabOtp");
+  const useOtp = tab === "otp";
+  emailForm?.classList.toggle("hidden", useOtp);
+  otpForm?.classList.toggle("hidden", !useOtp);
+  tabEmail?.classList.toggle("active", !useOtp);
+  tabOtp?.classList.toggle("active", useOtp);
+}
+
+let phoneConfirmation = null;
+let recaptchaVerifier = null;
+
+function collectOtpDigits() {
+  return Array.from(document.querySelectorAll("#loginOtpBoxes .otp-box"))
+    .map((box) => box.value.trim())
+    .join("");
+}
+
+async function sendPhoneOtp() {
+  if (!requireAuthAvailable()) return;
+  const phoneRaw = document.getElementById("loginPhone")?.value.trim() || "";
+  if (!/^\d{10}$/.test(phoneRaw)) {
+    showToast("Enter a valid 10-digit mobile number", "error");
+    return;
+  }
+  const fbAuth = firebaseAuthNamespace();
+  if (!fbAuth?.RecaptchaVerifier) {
+    showToast("Phone login is not available in this browser session.", "error");
+    return;
+  }
+  try {
+    setLoading("otpBtnText", "otpSpinner", true);
+    if (!recaptchaVerifier) {
+      recaptchaVerifier = new fbAuth.RecaptchaVerifier("recaptcha-container", { size: "invisible" });
+      await recaptchaVerifier.render();
+    }
+    phoneConfirmation = await auth.signInWithPhoneNumber("+91" + phoneRaw, recaptchaVerifier);
+    document.getElementById("otpInputGroup")?.classList.remove("hidden");
+    document.getElementById("sendOtpBtn")?.classList.add("hidden");
+    document.getElementById("verifyOtpBtn")?.classList.remove("hidden");
+    showToast("OTP sent");
+  } catch (err) {
+    phoneConfirmation = null;
+    showToast(err.message || "Could not send OTP", "error");
+    if (recaptchaVerifier?.clear) recaptchaVerifier.clear();
+    recaptchaVerifier = null;
+  } finally {
+    setLoading("otpBtnText", "otpSpinner", false);
+  }
+}
+
+async function verifyPhoneOtp(e) {
+  e.preventDefault();
+  if (!requireAuthAvailable()) return;
+  if (!phoneConfirmation) {
+    showToast("Request OTP first", "error");
+    return;
+  }
+  const code = collectOtpDigits();
+  if (!/^\d{6}$/.test(code)) {
+    showToast("Enter the 6-digit OTP", "error");
+    return;
+  }
+  try {
+    const cred = await phoneConfirmation.confirm(code);
+    await enterAppAfterProviderAuth(cred.user, "student");
+    showToast("Login successful! Redirecting...");
+    setTimeout(() => { window.location.href = "dashboard.html"; }, 700);
+  } catch (err) {
+    showToast(err.message || "Invalid OTP", "error");
+  }
+}
+
+async function handleGoogleLogin() {
+  if (!requireAuthAvailable()) return;
+  const fbAuth = firebaseAuthNamespace();
+  if (!fbAuth?.GoogleAuthProvider) {
+    showToast("Google login is not available right now.", "error");
+    return;
+  }
+  try {
+    const provider = new fbAuth.GoogleAuthProvider();
+    const cred = await auth.signInWithPopup(provider);
+    const role = document.getElementById("signupForm") ? selectedRole : "student";
+    await enterAppAfterProviderAuth(cred.user, role);
+    showToast("Login successful! Redirecting...");
+    setTimeout(() => { window.location.href = "dashboard.html"; }, 700);
+  } catch (err) {
+    if (err.code !== "auth/popup-closed-by-user") {
+      showToast(err.message || "Google login failed", "error");
+      console.error("[AUTH] Google login error:", err);
+    }
+  }
+}
+
 // ─────────────────────────────────────────────────────────
 // RESET PASSWORD
 // ─────────────────────────────────────────────────────────
 
 async function sendResetEmail(e) {
   e.preventDefault();
+  if (!requireAuthAvailable()) return;
   const email = document.getElementById("resetEmail")?.value.trim();
   if (!email) { showToast("Enter your email", "error"); return; }
   try {
+    setLoading("resetBtnText", "resetSpinner", true);
     await auth.sendPasswordResetEmail(email);
+    const msg = document.getElementById("resetSentMsg");
+    if (msg) msg.textContent = `We've sent a password reset link to ${email}.`;
+    goToStep(2);
     showToast("Reset email sent! Check your inbox.");
   } catch (err) {
     showToast(err.message, "error");
+  } finally {
+    setLoading("resetBtnText", "resetSpinner", false);
   }
+}
+
+function goToStep(step) {
+  document.getElementById("step1")?.classList.toggle("hidden", step !== 1);
+  document.getElementById("step2")?.classList.toggle("hidden", step !== 2);
+}
+
+function showPolicy(kind) {
+  const copy = {
+    Terms: "Use MentorConnect respectfully, keep sessions professional, and follow mentor-specific booking expectations.",
+    Privacy: "MentorConnect stores account, profile, booking, chat, and notification data needed to run the demo experience.",
+  };
+  showToast(copy[kind] || "Policy details are available from the homepage footer.");
 }
 
 // ─────────────────────────────────────────────────────────
@@ -241,11 +434,11 @@ async function sendResetEmail(e) {
 // ─────────────────────────────────────────────────────────
 
 function checkStrength(password) {
-  const strengthBar  = document.getElementById("strengthFill");
-  const strengthText = document.getElementById("strengthText");
+  const strengthBar  = document.getElementById("strengthFill") || document.getElementById("strengthBar");
+  const strengthText = document.getElementById("strengthText") || document.getElementById("strengthLabel");
   if (!strengthBar || !strengthText) return;
   let strength = 0;
-  if (password.length >= 6)          strength++;
+  if (password.length >= 8)          strength++;
   if (/[A-Z]/.test(password))        strength++;
   if (/[0-9]/.test(password))        strength++;
   if (/[^A-Za-z0-9]/.test(password)) strength++;

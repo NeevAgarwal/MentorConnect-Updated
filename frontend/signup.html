@@ -43,6 +43,7 @@
           <div class="form-group">
             <label>Last Name</label>
             <input type="text" id="lastName" placeholder="Doe" required/>
+            <span class="field-error" id="lastNameErr"></span>
           </div>
         </div>
         <div class="form-group">
@@ -100,7 +101,7 @@
 </div>
         <label class="checkbox-label terms-check">
           <input type="checkbox" id="agreeTerms" required/>
-          I agree to the <a href="#" style="color:var(--gold)">Terms</a> and <a href="#" style="color:var(--gold)">Privacy Policy</a>
+          I agree to the <a href="#" onclick="showPolicy('Terms'); return false;" style="color:var(--gold)">Terms</a> and <a href="#" onclick="showPolicy('Privacy'); return false;" style="color:var(--gold)">Privacy Policy</a>
         </label>
         <button type="submit" class="btn-submit">
           <span id="signupBtnText">Create Account</span>
@@ -134,23 +135,29 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r121/three.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/vanta@latest/dist/vanta.dots.min.js"></script>
 <script>
-  lucide.createIcons();
-  VANTA.DOTS({
-    el: "#vanta-bg",
-    mouseControls: true,
-    touchControls: true,
-    gyroControls: false,
-    minHeight: 200,
-    minWidth: 200,
-    scale: 1.0,
-    scaleMobile: 1.0,
-    color: 0xD4AF37,
-    color2: 0x1a3a6e,
-    backgroundColor: 0x060B18,
-    size: 2.8,
-    spacing: 28,
-    showLines: true
-  });
+  if (window.lucide) lucide.createIcons();
+  if (window.VANTA && typeof VANTA.DOTS === "function") {
+    try {
+      VANTA.DOTS({
+        el: "#vanta-bg",
+        mouseControls: true,
+        touchControls: true,
+        gyroControls: false,
+        minHeight: 200,
+        minWidth: 200,
+        scale: 1.0,
+        scaleMobile: 1.0,
+        color: 0xD4AF37,
+        color2: 0x1a3a6e,
+        backgroundColor: 0x060B18,
+        size: 2.8,
+        spacing: 28,
+        showLines: true
+      });
+    } catch (err) {
+      console.warn("[UI] Animated background unavailable:", err);
+    }
+  }
 </script>
 </body>
 </html>
