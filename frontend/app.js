@@ -26,6 +26,7 @@ document.addEventListener("DOMContentLoaded", () => {
   renderDomainFilters();
   renderSteps();
   renderTestimonials();
+  renderLandingExtras([]);
   loadMentorsFromApi();
   setInterval(renderTestimonials, 5500);
   document.getElementById("searchInput")?.addEventListener("input", () => {
@@ -41,7 +42,7 @@ async function loadMentorsFromApi() {
   if (activeFilter !== "All") params.set("domain", activeFilter);
   params.set("sort", activeSort);
   try {
-    const base = window.MC_API || "http://localhost:5000";
+    const base = String(window.MC_API || "http://localhost:5000").trim().replace(/\/+$/, "");
     const response = await fetch(`${base}/api/users/mentors?${params.toString()}`);
     const data = response.ok ? await response.json() : null;
     const liveMentors = data?.mentors || [];
@@ -55,11 +56,34 @@ async function loadMentorsFromApi() {
     renderDomainFilters();
     renderMentors(apiMentors);
     renderHomeActivity(apiMentors);
+    renderLandingExtras(apiMentors);
   } catch {
     const fallback = fallbackMentors(q, activeFilter);
     renderMentors(fallback);
     renderHomeActivity(fallback);
+    renderLandingExtras(fallback);
   }
+}
+
+function animateStat(el, target, suffix = "") {
+  if (!el) return;
+  const number = Number(target);
+  if (!Number.isFinite(number)) {
+    el.textContent = target;
+    return;
+  }
+  const start = Number(el.dataset.current || 0);
+  const duration = 650;
+  const t0 = performance.now();
+  function step(now) {
+    const p = Math.min(1, (now - t0) / duration);
+    const eased = 1 - Math.pow(1 - p, 3);
+    const value = Math.round(start + (number - start) * eased);
+    el.textContent = `${value}${suffix}`;
+    if (p < 1) requestAnimationFrame(step);
+    else el.dataset.current = String(number);
+  }
+  requestAnimationFrame(step);
 }
 
 function fallbackMentors(q = "", domain = "All") {
@@ -98,8 +122,8 @@ function renderHomeActivity(list) {
   const statMentors = document.getElementById("homeStatMentors");
   const statSessions = document.getElementById("homeStatSessions");
   const statRating = document.getElementById("homeStatRating");
-  if (statMentors) statMentors.textContent = mentorsList.length ? `${mentorsList.length}+` : "500+";
-  if (statSessions) statSessions.textContent = sessions ? `${sessions}+` : "12K+";
+  if (statMentors) animateStat(statMentors, mentorsList.length || 500, "+");
+  if (statSessions) animateStat(statSessions, sessions || 12000, "+");
   if (statRating) statRating.textContent = ratingCount ? (ratingTotal / ratingCount).toFixed(1) : "4.9";
 
   const renderTags = (id, map, fallback) => {
@@ -117,6 +141,43 @@ function renderHomeActivity(list) {
   if (pulse) {
     const activeMentors = mentorsList.filter((m) => (m.bookableSlots || []).length || m.featured).length;
     pulse.innerHTML = `<strong>${activeMentors || mentorsList.length}</strong> mentors are discoverable with live profiles, booking, chat, and recommendations.`;
+  }
+  if (window.lucide) lucide.createIcons();
+}
+
+function renderLandingExtras(list) {
+  const mentorsList = list?.length ? list : fallbackMentors("", "All");
+  const cat = document.getElementById("mentorCategories");
+  if (cat) {
+    const rows = domains.filter((d) => d !== "All").map((domain) => {
+      const count = mentorsList.filter((m) => m.domain === domain).length || 1;
+      return { domain, count };
+    });
+    cat.innerHTML = rows
+      .map((r) => `<button class="category-card" onclick="setDomain('${esc(r.domain)}')"><strong>${esc(r.domain)}</strong><span>${r.count} mentors</span></button>`)
+      .join("");
+  }
+
+  const carousel = document.getElementById("featuredMentorsCarousel");
+  if (carousel) {
+    const featured = mentorsList
+      .slice()
+      .sort((a, b) => Number(b.featured || 0) - Number(a.featured || 0) || Number(b.ratingAvg || b.rating || 0) - Number(a.ratingAvg || a.rating || 0))
+      .slice(0, 5);
+    carousel.innerHTML = featured
+      .map((m) => `<div class="carousel-card"><div><strong>${esc(m.name)}</strong><span>${esc(m.domain || m.role || "Mentor")}</span></div><p>${esc((m.bio || m.company || "Available for focused 1:1 guidance.").slice(0, 90))}</p><em>${esc(m.responseRate || 96)}% response</em></div>`)
+      .join("");
+  }
+
+  const faq = document.getElementById("faqAccordion");
+  if (faq) {
+    const items = (modalContent.FAQs?.sections || []).slice(0, 4);
+    faq.innerHTML = items
+      .map((item, i) => `<button class="faq-item ${i === 0 ? "open" : ""}" type="button"><span>${esc(item.heading)}</span><p>${esc(item.body)}</p></button>`)
+      .join("");
+    faq.querySelectorAll(".faq-item").forEach((btn) => {
+      btn.addEventListener("click", () => btn.classList.toggle("open"));
+    });
   }
   if (window.lucide) lucide.createIcons();
 }

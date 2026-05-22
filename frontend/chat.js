@@ -8,6 +8,9 @@ let pendingByClientId = new Map();
 let failedByClientId = new Map();
 const scrollByPeer = new Map();
 let incomingTypingTimer = null;
+let allConversations = [];
+let activeMessages = [];
+let messageSearchTerm = "";
 
 function currentJwt() {
   return localStorage.getItem("mc_jwt") || "";
@@ -58,6 +61,54 @@ function shortTime(value) {
   return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
+function timeAgo(value) {
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return "";
+  const mins = Math.max(1, Math.round((Date.now() - d.getTime()) / 60000));
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.round(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return `${Math.round(hours / 24)}d ago`;
+}
+
+function pinnedConversations() {
+  try {
+    return JSON.parse(localStorage.getItem("mc_pinned_conversations") || "[]");
+  } catch (_) {
+    return [];
+  }
+}
+
+function setPinnedConversations(list) {
+  localStorage.setItem("mc_pinned_conversations", JSON.stringify([...new Set(list)].slice(0, 20)));
+}
+
+function reactionStore() {
+  try {
+    return JSON.parse(localStorage.getItem("mc_message_reactions") || "{}");
+  } catch (_) {
+    return {};
+  }
+}
+
+function saveReaction(messageId, emoji) {
+  if (!messageId) return;
+  const store = reactionStore();
+  store[messageId] = emoji;
+  localStorage.setItem("mc_message_reactions", JSON.stringify(store));
+}
+
+function chatToast(text) {
+  const existing = document.getElementById("chatToast");
+  if (existing) existing.remove();
+  const t = document.createElement("div");
+  t.id = "chatToast";
+  t.className = "chat-toast";
+  t.textContent = text;
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 2400);
+}
+
 function params() {
   const u = new URLSearchParams(location.search);
   return u.get("with") || "";
@@ -72,7 +123,8 @@ async function loadSidebar() {
     return;
   }
 
-  const rows = res.data.conversations || [];
+  allConversations = res.data.conversations || [];
+  const rows = filterAndSortConversations();
   
   if (!rows.length) {
     list.innerHTML = "<p class='conv-empty'>Start by messaging someone from the directory.</p>";
@@ -85,19 +137,33 @@ async function loadSidebar() {
       <div class="conv-avatar">${avatarFor(c.otherUser)}</div>
       <div class="conv-copy">
       <div class="conv-item-top">
-        <div class="conv-item-name">${esc(c.otherUser?.name || 'Unknown')}</div>
+        <div class="conv-item-name">${pinnedConversations().includes(c.otherUser?.firebaseUID) ? "Pinned " : ""}${esc(c.otherUser?.name || 'Unknown')}</div>
         <span class="conv-time">${shortTime(c.lastMessage?.createdAt)}</span>
       </div>
       <div class="conv-item-preview">${esc(c.lastMessage?.text || '')}</div>
+      <div class="conv-presence">Last active ${esc(timeAgo(c.otherUser?.lastActiveAt || c.otherUser?.updatedAt || c.lastMessage?.createdAt))}</div>
       </div>
-      ${c.unreadCount ? `<span class="conv-unread">${c.unreadCount > 99 ? "99+" : esc(c.unreadCount)}</span>` : ""}
+      <div class="conv-actions">
+        <button type="button" class="pin-btn ${pinnedConversations().includes(c.otherUser?.firebaseUID) ? "active" : ""}" data-pin="${esc(c.otherUser?.firebaseUID || "")}" title="Pin conversation">Pin</button>
+        ${c.unreadCount ? `<span class="conv-unread">${c.unreadCount > 99 ? "99+" : esc(c.unreadCount)}</span>` : ""}
+      </div>
     </div>`)
     .join("");
 
   list.querySelectorAll(".conv-item").forEach((el) => {
-    el.addEventListener("click", () => 
+    el.addEventListener("click", (ev) => {
+      if (ev.target.closest(".pin-btn")) return;
       selectChat(el.getAttribute("data-with"), el.getAttribute("data-name"))
-    );
+    });
+  });
+  list.querySelectorAll(".pin-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const uid = btn.getAttribute("data-pin");
+      const pins = pinnedConversations();
+      const next = pins.includes(uid) ? pins.filter((x) => x !== uid) : [uid, ...pins];
+      setPinnedConversations(next);
+      loadSidebar();
+    });
   });
 
   const deep = params();
@@ -107,9 +173,26 @@ async function loadSidebar() {
   }
 }
 
+function filterAndSortConversations() {
+  const q = (document.getElementById("conversationSearch")?.value || "").toLowerCase().trim();
+  const pins = pinnedConversations();
+  return allConversations
+    .filter((c) => {
+      if (!q) return true;
+      return [c.otherUser?.name, c.otherUser?.role, c.lastMessage?.text].join(" ").toLowerCase().includes(q);
+    })
+    .sort((a, b) => {
+      const ap = pins.includes(a.otherUser?.firebaseUID) ? 1 : 0;
+      const bp = pins.includes(b.otherUser?.firebaseUID) ? 1 : 0;
+      if (ap !== bp) return bp - ap;
+      return new Date(b.lastMessage?.createdAt || 0) - new Date(a.lastMessage?.createdAt || 0);
+    });
+}
+
 function setTypingText(text) {
   const ind = document.getElementById("typingInd");
-  if (ind) ind.textContent = text || "";
+  if (!ind) return;
+  ind.innerHTML = text === "Typing..." ? '<span class="typing-dots"><i></i><i></i><i></i></span>' : esc(text || "");
 }
 
 function setPeerStatus(text) {
@@ -125,12 +208,23 @@ function updateComposerState() {
   if (sendBtn) sendBtn.disabled = !canSend;
 }
 
+function highlightText(text) {
+  const safe = esc(text);
+  const term = messageSearchTerm.trim();
+  if (!term) return safe;
+  const re = new RegExp(`(${term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")})`, "ig");
+  return safe.replace(re, "<mark>$1</mark>");
+}
+
 function messageHtml(m, me, grouped = false) {
   const mine = m.senderFirebaseUID === me;
   const t = shortTime(m.createdAt || Date.now());
   const id = esc(m._id || m.clientId || `${m.senderFirebaseUID}-${m.createdAt || Date.now()}`);
-  const status = m.pending ? "Sending..." : m.failed ? "Failed to send - click to retry" : t;
-  return `<div class="bubble ${mine ? "me" : "them"} ${grouped ? "grouped" : ""} ${m.pending ? "pending" : ""} ${m.failed ? "failed" : ""}" data-msg-id="${id}" ${m.failed ? 'role="button" tabindex="0"' : ""}>${esc(m.text)}<div class="bubble-meta ${m.failed ? "retry-hint" : ""}">${esc(status)}</div></div>`;
+  const readBy = Array.isArray(m.readBy) ? m.readBy : [];
+  const status = m.pending ? "Sending..." : m.failed ? "Failed to send - click to retry" : mine ? (readBy.length > 1 ? "Read" : m._id ? "Delivered" : "Sent") : t;
+  const reactions = reactionStore();
+  const reaction = reactions[m._id || m.clientId] || "";
+  return `<div class="bubble ${mine ? "me" : "them"} ${grouped ? "grouped" : ""} ${m.pending ? "pending" : ""} ${m.failed ? "failed" : ""}" data-msg-id="${id}" ${m.failed ? 'role="button" tabindex="0"' : ""}>${highlightText(m.text)}<div class="bubble-meta ${m.failed ? "retry-hint" : ""}">${esc(status)}</div><div class="reaction-row"><button type="button" class="reaction-btn" data-emoji="👍">👍</button><button type="button" class="reaction-btn" data-emoji="❤️">❤️</button><button type="button" class="reaction-btn" data-emoji="✅">✅</button>${reaction ? `<span class="reaction-picked">${esc(reaction)}</span>` : ""}</div></div>`;
 }
 
 function renderMessages(messages) {
@@ -140,7 +234,11 @@ function renderMessages(messages) {
   let lastDay = "";
   let lastSender = "";
   let lastTime = 0;
-  thread.innerHTML = (messages || []).map((m) => {
+  activeMessages = messages || activeMessages || [];
+  const filtered = messageSearchTerm
+    ? activeMessages.filter((m) => String(m.text || "").toLowerCase().includes(messageSearchTerm.toLowerCase()))
+    : activeMessages;
+  thread.innerHTML = filtered.map((m) => {
     const d = new Date(m.createdAt || Date.now());
     const day = d.toDateString();
     const gap = d.getTime() - lastTime;
@@ -252,7 +350,8 @@ async function selectChat(uid, name) {
     return;
   }
 
-  renderMessages(res.data.messages || []);
+  activeMessages = res.data.messages || [];
+  renderMessages(activeMessages);
   clearActiveUnread();
   setTypingText("");
 }
@@ -480,6 +579,13 @@ document.addEventListener("DOMContentLoaded", async () => {
   const thread = document.getElementById("msgThread");
   if (thread) {
     thread.addEventListener("click", (e) => {
+      const reactionBtn = e.target.closest(".reaction-btn");
+      if (reactionBtn) {
+        const bubble = reactionBtn.closest(".bubble");
+        saveReaction(bubble?.getAttribute("data-msg-id"), reactionBtn.getAttribute("data-emoji"));
+        renderMessages(activeMessages);
+        return;
+      }
       const bubble = e.target.closest(".bubble.failed");
       if (!bubble) return;
       retryFailedMessage(bubble.getAttribute("data-msg-id"));
@@ -494,6 +600,14 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   const msgInput = document.getElementById("msgInput");
+  document.getElementById("conversationSearch")?.addEventListener("input", loadSidebar);
+  document.getElementById("messageSearch")?.addEventListener("input", (e) => {
+    messageSearchTerm = e.target.value || "";
+    renderMessages(activeMessages);
+  });
+  document.getElementById("attachBtn")?.addEventListener("click", () => {
+    chatToast("Attachments UI is ready; file upload can be enabled next.");
+  });
   if (msgInput) {
     msgInput.addEventListener("keydown", (e) => {
       if (e.key === "Enter" && !e.shiftKey) {

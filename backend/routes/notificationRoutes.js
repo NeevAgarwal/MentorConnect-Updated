@@ -31,4 +31,9 @@ router.post("/mark-all-read", requireAuth, async (req, res) => {
   res.json({ success: true });
 });
 
+router.delete("/mine", requireAuth, async (req, res) => {
+  await Notification.deleteMany({ userFirebaseUID: req.auth.uid });
+  res.json({ success: true });
+});
+
 module.exports = router;

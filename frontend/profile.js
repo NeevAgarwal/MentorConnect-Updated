@@ -4,6 +4,7 @@ let skills = [];
 let expertiseTags = [];
 let interests = [];
 let goals = [];
+let languages = [];
 let bookableSlots = [];
 let selectedRole = "student";
 let profileDirty = false;
@@ -138,6 +139,14 @@ function renderGoals() {
     renderGoals();
   });
 }
+function renderLanguages() {
+  tagRenderer("languageTags", languages, (i) => {
+    languages.splice(i, 1);
+    markDirty();
+    renderLanguages();
+    renderProfileDetails();
+  });
+}
 
 function addTo(list, raw, max, renderFn) {
   let skippedForLimit = false;
@@ -219,6 +228,11 @@ function currentDraft() {
     company: document.getElementById("companyInput")?.value?.trim() || "",
     education: document.getElementById("educationInput")?.value?.trim() || "",
     experience: document.getElementById("experienceInput")?.value?.trim() || "",
+    experienceYears: Number(document.getElementById("experienceYearsInput")?.value || 0),
+    languages,
+    timezone: document.getElementById("timezoneInput")?.value?.trim() || "",
+    availabilityStatus: document.getElementById("availabilityStatusInput")?.value || "open",
+    learningProgress: Number(document.getElementById("learningProgressInput")?.value || 0),
     profilePic: document.getElementById("profilePicInput")?.value?.trim() || "",
     resumeUrl: document.getElementById("resumeUrlInput")?.value?.trim() || "",
     domain: document.getElementById("domainInput")?.value?.trim() || "",
@@ -230,8 +244,8 @@ function currentDraft() {
 
 function profileCompletion(user) {
   const base = ["bio", "profilePic", "linkedin"];
-  const mentor = ["company", "education", "domain", "experience", "skills", "expertiseTags", "bookableSlots"];
-  const student = ["skills", "interests", "goals"];
+  const mentor = ["company", "education", "domain", "experience", "experienceYears", "languages", "timezone", "skills", "expertiseTags", "bookableSlots"];
+  const student = ["skills", "interests", "goals", "languages", "timezone", "learningProgress"];
   const fields = [...base, ...(user.role === "mentor" ? mentor : student)];
   const done = fields.filter((key) => {
     const value = user[key];
@@ -239,6 +253,15 @@ function profileCompletion(user) {
     return Boolean(String(value || "").trim());
   }).length;
   return Math.round((done / fields.length) * 100);
+}
+
+function mentorTrustScore(user) {
+  const response = Number(user.responseRate || 96);
+  const rating = Number(user.ratingAvg || 0) * 12;
+  const sessions = Math.min(18, Number(user.totalSessions || 0) * 1.5);
+  const completion = profileCompletion(user) * 0.18;
+  const availability = user.availabilityStatus === "open" ? 8 : user.availabilityStatus === "busy" ? 4 : 1;
+  return Math.max(40, Math.min(99, Math.round(response * 0.25 + rating + sessions + completion + availability)));
 }
 
 function renderProfileDetails() {
@@ -253,11 +276,34 @@ function renderProfileDetails() {
   if (stats) {
     stats.innerHTML = [
       { label: "Sessions", value: user.totalSessions || 0 },
-      { label: "Rating", value: Number(user.ratingAvg || 0).toFixed(1) },
-      { label: "Views", value: user.profileViews || 0 },
+      { label: "Trust", value: mentorTrustScore(user) },
+      { label: "Years", value: user.role === "mentor" ? Number(user.experienceYears || 0) : `${Number(user.learningProgress || 0)}%` },
     ]
       .map((item) => `<div class="preview-stat"><strong>${escapeHtml(item.value)}</strong><span>${escapeHtml(item.label)}</span></div>`)
       .join("");
+  }
+
+  const presence = document.getElementById("previewPresence");
+  if (presence) {
+    const label = user.availabilityStatus === "busy" ? "Limited availability" : user.availabilityStatus === "away" ? "Away" : "Open to bookings";
+    presence.className = `preview-presence ${escapeHtml(user.availabilityStatus || "open")}`;
+    presence.innerHTML = `<span class="presence-dot"></span><span>${escapeHtml(label)}</span>`;
+  }
+
+  const achievements = document.getElementById("previewAchievements");
+  if (achievements) {
+    const badges = [
+      pct >= 80 ? "Complete profile" : null,
+      user.role === "mentor" && user.featured ? "Featured mentor" : null,
+      user.role === "mentor" && Number(user.responseRate || 96) >= 90 ? "Fast responder" : null,
+      user.role === "mentor" && Number(user.ratingAvg || 0) >= 4.7 ? "Top rated" : null,
+      user.role === "mentor" && Number(user.totalSessions || 0) >= 10 ? "Session pro" : null,
+      user.role === "student" && Number(user.learningProgress || 0) >= 50 ? "Growth streak" : null,
+      (user.languages || []).length >= 2 ? "Multilingual" : null,
+    ].filter(Boolean);
+    achievements.innerHTML = badges.length
+      ? badges.map((b) => `<span class="achievement-pill">${escapeHtml(b)}</span>`).join("")
+      : '<span class="section-sub">Badges unlock as you complete your profile</span>';
   }
 
   const links = document.getElementById("previewLinks");
@@ -280,6 +326,9 @@ function renderProfileDetails() {
       user.company ? `Company: ${user.company}` : "",
       user.education ? `Education: ${user.education}` : "",
       user.experience ? `Experience: ${user.experience}` : "",
+      user.experienceYears ? `${user.experienceYears}+ years of experience` : "",
+      user.languages?.length ? `Languages: ${user.languages.join(", ")}` : "",
+      user.timezone ? `Timezone: ${user.timezone}` : "",
       user.domain ? `Domain: ${user.domain}` : "",
     ].filter(Boolean);
     timeline.innerHTML = points.map((p) => `<div class="timeline-item">${escapeHtml(p)}</div>`).join("");
@@ -347,6 +396,10 @@ async function loadProfile(uid) {
 
     setValue("linkedinInput", currentUser?.linkedin || "");
     setValue("experienceInput", currentUser?.experience || "");
+    setValue("experienceYearsInput", currentUser?.experienceYears ?? 0);
+    setValue("timezoneInput", currentUser?.timezone || "");
+    setValue("availabilityStatusInput", currentUser?.availabilityStatus || "open");
+    setValue("learningProgressInput", currentUser?.learningProgress ?? 0);
     setValue("profilePicInput", currentUser?.profilePic || "");
     setValue("githubInput", currentUser?.github || "");
     setValue("companyInput", currentUser?.company || "");
@@ -360,12 +413,14 @@ async function loadProfile(uid) {
     expertiseTags = [...(currentUser?.expertiseTags || [])];
     interests = [...(currentUser?.interests || [])];
     goals = [...(currentUser?.goals || [])];
+    languages = [...(currentUser?.languages || [])];
     bookableSlots = normalizeSlots(currentUser?.bookableSlots || []);
 
     renderSkillPills();
     renderExp();
     renderInterest();
     renderGoals();
+    renderLanguages();
     renderSlots();
     renderProfileDetails();
 
@@ -429,6 +484,11 @@ async function saveProfile() {
     company: document.getElementById("companyInput")?.value?.trim() || "",
     education: document.getElementById("educationInput")?.value?.trim() || "",
     experience: document.getElementById("experienceInput")?.value?.trim() || "",
+    experienceYears: Number(document.getElementById("experienceYearsInput")?.value || 0),
+    languages,
+    timezone: document.getElementById("timezoneInput")?.value?.trim() || "",
+    availabilityStatus: document.getElementById("availabilityStatusInput")?.value || "open",
+    learningProgress: Number(document.getElementById("learningProgressInput")?.value || 0),
     profilePic,
     resumeUrl,
     pricePerSession: price,
@@ -505,10 +565,25 @@ document.addEventListener("DOMContentLoaded", async () => {
   bindTagInput("expInput", expertiseTags, 15, renderExp);
   bindTagInput("interestInput", interests, 15, renderInterest);
   bindTagInput("goalInput", goals, 15, renderGoals);
+  bindTagInput("languageInput", languages, 12, renderLanguages);
   const slotPicker = document.getElementById("slotPicker");
   if (slotPicker) slotPicker.min = new Date(Date.now() + 15 * 60 * 1000).toISOString().slice(0, 16);
 
-  ["linkedinInput", "experienceInput", "githubInput", "companyInput", "educationInput", "domainInput", "priceInput", "currencyInput", "resumeUrlInput"].forEach((id) => {
+  [
+    "linkedinInput",
+    "experienceInput",
+    "experienceYearsInput",
+    "timezoneInput",
+    "availabilityStatusInput",
+    "learningProgressInput",
+    "githubInput",
+    "companyInput",
+    "educationInput",
+    "domainInput",
+    "priceInput",
+    "currencyInput",
+    "resumeUrlInput",
+  ].forEach((id) => {
     document.getElementById(id)?.addEventListener("input", () => {
       markDirty();
       setStatus("");

@@ -2,11 +2,11 @@ import { logger } from "../utils/logger.js";
 import { setState, persistSessionPrefs } from "../state/store.js";
 
 function apiBase() {
-  const b = window.MC_API;
+  const b = String(window.MC_API || "").trim().replace(/\/+$/, "");
   if (!b) {
     logger.warn("MC_API not set — configure js/config.js or meta mc-api-base");
   }
-  return b || "";
+  return b;
 }
 
 /**

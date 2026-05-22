@@ -218,6 +218,9 @@ router.get(
       s += (m.ratingAvg || 0) * 8;
       s += Math.min(25, (m.totalSessions || 0) * 0.5);
       s += Math.min(10, (m.bookableSlots || []).length * 2);
+      s += Math.min(6, Math.max(0, Number(m.experienceYears || 0)) * 0.6);
+      s += Math.min(8, Math.max(0, Number(m.responseRate || 0)) / 18);
+      if (m.availabilityStatus === "open") s += 5;
       if (m.profilePic) s += 3;
       if (m.bio && m.bio.length > 80) s += 5;
       const pool = [...(m.skills || []), ...(m.expertiseTags || [])].map((x) => String(x).toLowerCase());
@@ -294,6 +297,11 @@ router.put(
   body("company").optional().isString().isLength({ max: 120 }),
   body("education").optional().isString().isLength({ max: 160 }),
   body("experience").optional().isString().isLength({ max: 500 }),
+  body("experienceYears").optional().isFloat({ min: 0, max: 60 }),
+  body("languages").optional().isArray({ max: 12 }),
+  body("timezone").optional().isString().isLength({ max: 80 }),
+  body("availabilityStatus").optional().isIn(["open", "busy", "away"]),
+  body("learningProgress").optional().isFloat({ min: 0, max: 100 }),
   body("profilePic").optional().isString().isLength({ max: 2000 }),
   body("resumeUrl").optional().isString().isLength({ max: 2000 }),
   body("pricePerSession").optional().isFloat({ min: 0, max: 100000 }),
@@ -317,6 +325,11 @@ router.put(
       "company",
       "education",
       "experience",
+      "experienceYears",
+      "languages",
+      "timezone",
+      "availabilityStatus",
+      "learningProgress",
       "profilePic",
       "resumeUrl",
       "pricePerSession",
@@ -329,7 +342,7 @@ router.put(
     allowed.forEach((k) => {
       if (req.body[k] !== undefined) patch[k] = req.body[k];
     });
-    ["skills", "expertiseTags", "interests", "goals"].forEach((k) => {
+    ["skills", "expertiseTags", "interests", "goals", "languages"].forEach((k) => {
       if (patch[k] !== undefined) patch[k] = normalizeStringArray(patch[k]);
     });
     if (patch.bookableSlots !== undefined) {

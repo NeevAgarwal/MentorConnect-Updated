@@ -13,6 +13,8 @@ const BookingSchema = new mongoose.Schema(
       index: true,
     },
     topic: { type: String, default: "", maxlength: 280 },
+    sessionGoals: { type: [String], default: [] },
+    sessionNotes: { type: String, default: "", maxlength: 1000 },
     meetingLink: { type: String, default: "" },
     priceAtBooking: { type: Number, default: 0, min: 0 },
     mentorNotes: { type: String, default: "", maxlength: 500 },

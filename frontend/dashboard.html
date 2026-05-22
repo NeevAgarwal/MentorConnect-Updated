@@ -93,7 +93,16 @@
           <div class="notif-dropdown" id="notifDropdown">
             <div class="notif-head">
               <span>Notifications</span>
-              <button type="button" id="markAllNotifBtn" class="notif-mark-all">Mark all read</button>
+              <div class="notif-actions">
+                <button type="button" id="notifPrefsBtn" class="notif-mark-all">Prefs</button>
+                <button type="button" id="markAllNotifBtn" class="notif-mark-all">Read all</button>
+                <button type="button" id="clearAllNotifBtn" class="notif-mark-all danger">Clear</button>
+              </div>
+            </div>
+            <div class="notif-prefs" id="notifPrefs">
+              <label><input type="checkbox" data-pref="messages" checked /> Messages</label>
+              <label><input type="checkbox" data-pref="bookings" checked /> Bookings</label>
+              <label><input type="checkbox" data-pref="reminders" checked /> Reminders</label>
             </div>
             <div class="notif-list" id="notifList"></div>
           </div>
@@ -120,6 +129,44 @@
         <div class="stat-label">Students</div>
       </div>
     </div>
+
+    <section class="smart-dashboard-grid" aria-label="Smart dashboard">
+      <div class="live-panel quick-actions-panel">
+        <div class="section-head compact">
+          <h2>Quick Actions</h2>
+          <p class="page-sub">Jump into the next useful move</p>
+        </div>
+        <div class="quick-actions" id="quickActions"></div>
+      </div>
+      <div class="live-panel">
+        <div class="section-head compact">
+          <h2>Next Session</h2>
+          <p class="page-sub">Countdown and readiness</p>
+        </div>
+        <div id="nextSessionCountdown" class="countdown-card"></div>
+      </div>
+      <div class="live-panel">
+        <div class="section-head compact">
+          <h2>Learning Stats</h2>
+          <p class="page-sub">Lightweight progress signals</p>
+        </div>
+        <div id="learningStats" class="metric-stack"></div>
+      </div>
+      <div class="live-panel wide">
+        <div class="section-head compact">
+          <h2>Recent Activity</h2>
+          <p class="page-sub">Messages, sessions, and alerts in one stream</p>
+        </div>
+        <div id="recentActivityFeed" class="activity-feed"></div>
+      </div>
+      <div class="live-panel">
+        <div class="section-head compact">
+          <h2>Weekly Summary</h2>
+          <p class="page-sub">What happened in the last 7 days</p>
+        </div>
+        <div id="weeklySummary" class="weekly-summary"></div>
+      </div>
+    </section>
 
     <section class="dashboard-live-grid" id="dashboardLiveGrid">
       <div class="live-panel wide">
@@ -231,6 +278,8 @@
         <input type="datetime-local" id="bmStart" class="profile-input" />
         <label class="form-label">Topic / goal</label>
         <input type="text" id="bmTopic" class="profile-input" placeholder="What do you want to cover?" maxlength="280" />
+        <label class="form-label">Session goals</label>
+        <input type="text" id="bmGoals" class="profile-input" placeholder="Interview prep, portfolio review, roadmap" maxlength="360" />
         <div class="modal-actions">
           <button type="button" class="connect-btn outline" id="bmCancel">Cancel</button>
           <button type="button" class="connect-btn" id="bmSubmit">Request booking</button>

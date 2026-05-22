@@ -17,6 +17,7 @@
     <div class="chat-side-head">
       <a href="dashboard.html" class="back-link">Back to Dashboard</a>
       <h2>Messages</h2>
+      <input type="search" id="conversationSearch" class="chat-search" placeholder="Search conversations..." />
     </div>
     <div id="convList" class="conv-list"></div>
   </aside>
@@ -27,10 +28,12 @@
         <div id="chatPeerName" class="chat-peer">Select a conversation</div>
         <div id="chatPeerStatus" class="chat-peer-status">Choose a thread to continue</div>
       </div>
+      <input type="search" id="messageSearch" class="chat-search message-search" placeholder="Search messages..." />
       <div id="typingInd" class="typing-ind"></div>
     </header>
     <div id="msgThread" class="msg-thread"></div>
     <div class="chat-composer glass-panel">
+      <button type="button" id="attachBtn" class="composer-icon-btn" title="Attachments coming soon">+</button>
       <textarea id="msgInput" rows="1" placeholder="Type a message..."></textarea>
       <button type="button" id="sendBtn" class="connect-btn">Send</button>
     </div>

@@ -78,6 +78,27 @@
         </div>
       </div>
     </div>
+    <div class="modal-overlay" id="reviewModal">
+      <div class="modal-sheet glass-panel">
+        <button type="button" class="modal-x" id="reviewClose" aria-label="Close">x</button>
+        <h3>Review mentor</h3>
+        <p class="slot-hint">Share quick feedback after a completed session.</p>
+        <label class="form-label">Rating</label>
+        <select id="reviewRating" class="profile-input">
+          <option value="5">5 - Excellent</option>
+          <option value="4">4 - Great</option>
+          <option value="3">3 - Good</option>
+          <option value="2">2 - Needs work</option>
+          <option value="1">1 - Poor</option>
+        </select>
+        <label class="form-label">Review</label>
+        <textarea id="reviewComment" class="profile-textarea" rows="4" maxlength="1200" placeholder="What was useful?"></textarea>
+        <div class="modal-actions">
+          <button type="button" class="connect-btn outline" id="reviewCancel">Cancel</button>
+          <button type="button" class="connect-btn" id="reviewSubmit">Submit review</button>
+        </div>
+      </div>
+    </div>
   </main>
 
   <script src="config.js"></script>

@@ -73,6 +73,134 @@ function compactDate(value) {
   return d.toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
 }
 
+function timeAgo(value) {
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return "";
+  const diff = Date.now() - d.getTime();
+  const mins = Math.max(1, Math.round(diff / 60000));
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.round(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return `${Math.round(hours / 24)}d ago`;
+}
+
+function notificationCategory(n) {
+  const t = String(n?.type || "system");
+  if (t === "message") return "Messages";
+  if (t === "booking" || t === "mentor_decision") return "Bookings";
+  if (t === "reminder") return "Reminders";
+  return "System";
+}
+
+function countdownText(value) {
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return "No date";
+  const diff = d.getTime() - Date.now();
+  if (diff <= 0) return "Starting now";
+  const hours = Math.floor(diff / 3600000);
+  const mins = Math.floor((diff % 3600000) / 60000);
+  if (hours >= 24) return `${Math.floor(hours / 24)}d ${hours % 24}h`;
+  if (hours > 0) return `${hours}h ${mins}m`;
+  return `${Math.max(1, mins)}m`;
+}
+
+function profileCompletionFor(user) {
+  const base = ["bio", "profilePic", "linkedin"];
+  const mentor = ["company", "education", "domain", "experience", "skills", "expertiseTags", "bookableSlots"];
+  const student = ["skills", "interests", "goals"];
+  const fields = [...base, ...(user?.role === "mentor" ? mentor : student)];
+  const done = fields.filter((key) => {
+    const value = user?.[key];
+    if (Array.isArray(value)) return value.length > 0;
+    return Boolean(String(value || "").trim());
+  }).length;
+  return Math.round((done / fields.length) * 100);
+}
+
+function renderQuickActions() {
+  const el = document.getElementById("quickActions");
+  if (!el) return;
+  const role = localStorage.getItem("mc_role") || "student";
+  const actions = [
+    { label: "Find mentor", href: "#mentorsMarketGrid", hint: "Browse matches" },
+    { label: "Continue chat", href: "chat.html", hint: "Open messages" },
+    { label: role === "mentor" ? "Add slots" : "Edit goals", href: "profile.html", hint: "Improve matching" },
+    { label: "View sessions", href: "sessions.html", hint: "Manage bookings" },
+  ];
+  el.innerHTML = actions
+    .map((a) => `<a class="quick-action" href="${escapeHtml(a.href)}"><strong>${escapeHtml(a.label)}</strong><span>${escapeHtml(a.hint)}</span></a>`)
+    .join("");
+}
+
+function renderSmartDashboard(chats, bookings, notifications) {
+  const now = new Date();
+  const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+  const upcoming = bookings
+    .filter((b) => new Date(b.startTime) > now && ["pending", "confirmed"].includes(b.status))
+    .sort((a, b) => new Date(a.startTime) - new Date(b.startTime));
+  const completed = bookings.filter((b) => b.status === "completed");
+  const completedWeek = completed.filter((b) => new Date(b.updatedAt || b.startTime) >= weekAgo);
+  const chatWeek = chats.filter((c) => new Date(c.lastMessage?.createdAt || 0) >= weekAgo);
+  const unread = notifications.filter((n) => !n.read);
+  const profile = getAuthState?.().mcUser || {};
+  const completion = profileCompletionFor(profile);
+
+  const countdown = document.getElementById("nextSessionCountdown");
+  if (countdown) {
+    const next = upcoming[0];
+    if (!next) {
+      countdown.innerHTML = '<div class="widget-empty">No upcoming session yet. Book or publish availability to get one on the calendar.</div>';
+    } else {
+      const person = next.mentorFirebaseUID === auth.currentUser?.uid ? next.student : next.mentor;
+      countdown.innerHTML = `
+        <div class="countdown-num">${escapeHtml(countdownText(next.startTime))}</div>
+        <div class="countdown-title">${escapeHtml(next.topic || "Mentor session")}</div>
+        <div class="countdown-sub">${escapeHtml(person?.name || "Participant")} - ${escapeHtml(compactDate(next.startTime))}</div>
+        <div class="readiness-row"><span></span><span style="width:${Math.min(100, completion)}%"></span></div>`;
+    }
+  }
+
+  const learning = document.getElementById("learningStats");
+  if (learning) {
+    const streak = Number(profile.streakCount || 0) || Math.min(7, Math.max(1, completed.length + chatWeek.length));
+    learning.innerHTML = [
+      { label: "Profile", value: `${completion}%` },
+      { label: "Streak", value: `${streak}d` },
+      { label: "Completed", value: completed.length },
+      { label: "Unread", value: unread.length },
+    ]
+      .map((m) => `<div class="metric-pill"><strong>${escapeHtml(m.value)}</strong><span>${escapeHtml(m.label)}</span></div>`)
+      .join("");
+  }
+
+  const activity = document.getElementById("recentActivityFeed");
+  if (activity) {
+    const items = [
+      ...notifications.slice(0, 8).map((n) => ({ type: n.type || "system", title: n.title, body: n.body, time: n.createdAt, href: n.type === "message" ? "chat.html" : "sessions.html" })),
+      ...chats.slice(0, 5).map((c) => ({ type: "message", title: c.otherUser?.name || "Conversation", body: c.lastMessage?.text || "No messages yet", time: c.lastMessage?.createdAt, href: `chat.html?with=${encodeURIComponent(c.otherUser?.firebaseUID || "")}` })),
+      ...upcoming.slice(0, 5).map((b) => ({ type: "booking", title: b.topic || "Upcoming session", body: compactDate(b.startTime), time: b.createdAt || b.startTime, href: "sessions.html" })),
+    ]
+      .filter((x) => x.time)
+      .sort((a, b) => new Date(b.time) - new Date(a.time))
+      .slice(0, 7);
+    activity.innerHTML = items.length
+      ? items.map((item) => `<a class="activity-item" href="${escapeHtml(item.href)}"><span class="activity-dot ${escapeHtml(item.type)}"></span><div><strong>${escapeHtml(item.title || "Activity")}</strong><p>${escapeHtml(item.body || "")}</p></div><em>${escapeHtml(timeAgo(item.time))}</em></a>`).join("")
+      : '<div class="widget-empty">Activity will appear here as you book sessions, chat, and receive updates.</div>';
+  }
+
+  const summary = document.getElementById("weeklySummary");
+  if (summary) {
+    summary.innerHTML = [
+      { label: "Sessions completed", value: completedWeek.length },
+      { label: "Active chats", value: chatWeek.length },
+      { label: "Upcoming", value: upcoming.length },
+      { label: "New alerts", value: notifications.filter((n) => new Date(n.createdAt) >= weekAgo).length },
+    ]
+      .map((m) => `<div class="summary-row"><span>${escapeHtml(m.label)}</span><strong>${escapeHtml(m.value)}</strong></div>`)
+      .join("");
+  }
+}
+
 function renderTopLists() {
   const skillCounts = new Map();
   const domainCounts = new Map();
@@ -155,6 +283,12 @@ function renderMentorWidgets() {
   }
 }
 
+function availabilityLabel(status) {
+  if (status === "busy") return "Limited";
+  if (status === "away") return "Away";
+  return "Open";
+}
+
 async function loadDashboardActivity() {
   ["continueConversation", "upcomingSessions", "unreadNotifications"].forEach((id) => setWidgetLoading(id, 2));
   const [chatRes, bookingRes, notifRes] = await Promise.allSettled([
@@ -216,6 +350,7 @@ async function loadDashboardActivity() {
   }
 
   const notifications = notifRes.value?.ok ? notifRes.value.data.notifications || [] : [];
+  renderSmartDashboard(chats, bookings, notifications);
   const unread = notifications.filter((n) => !n.read).slice(0, 4);
   const notif = document.getElementById("unreadNotifications");
   if (notif) {
@@ -327,16 +462,30 @@ async function loadNotifList() {
       list.innerHTML = '<div class="notif-empty">No notifications yet</div>';
       return;
     }
-    list.innerHTML = res.data.notifications
-      .slice(0, 20)
+    const rows = res.data.notifications.slice(0, 30);
+    const groups = rows.reduce((acc, n) => {
+      const key = n.read ? notificationCategory(n) : "Unread";
+      if (!acc[key]) acc[key] = [];
+      acc[key].push(n);
+      return acc;
+    }, {});
+    list.innerHTML = Object.entries(groups)
       .map(
-        (n) => `
-      <div class="notif-item ${n.read ? "" : "unread"}" data-id="${n._id}">
-        <div class="notif-title">${escapeHtml(n.title)}</div>
-        <div class="notif-body">${escapeHtml(n.body)}</div>
-        <div class="notif-time">${new Date(n.createdAt).toLocaleString()}</div>
-      </div>
-    `
+        ([group, items]) => `
+        <div class="notif-group-label">${escapeHtml(group)} <span>${items.length}</span></div>
+        ${items
+          .map(
+            (n) => `
+          <div class="notif-item ${n.read ? "" : "unread"}" data-id="${n._id}">
+            <div class="notif-row-top">
+              <div class="notif-title">${escapeHtml(n.title)}</div>
+              <span class="notif-category">${escapeHtml(notificationCategory(n))}</span>
+            </div>
+            <div class="notif-body">${escapeHtml(n.body)}</div>
+            <div class="notif-time">${escapeHtml(timeAgo(n.createdAt))}</div>
+          </div>`
+          )
+          .join("")}`
       )
       .join("");
     list.querySelectorAll(".notif-item").forEach((el) => {
@@ -376,12 +525,48 @@ async function markAllNotificationsRead() {
   }
 }
 
+async function clearAllNotifications() {
+  const btn = document.getElementById("clearAllNotifBtn");
+  if (!confirm("Clear all notifications?")) return;
+  setButtonBusy(btn, true, "Clearing...");
+  try {
+    const res = await mcDelete("/api/notifications/mine");
+    if (!res.ok) throw new Error(res.error || "Could not clear notifications");
+    await Promise.allSettled([loadNotificationsBadge(), loadNotifList(), loadDashboardActivity()]);
+  } catch (err) {
+    console.error("[DASHBOARD] Clear notifications error:", err);
+    showToast(err.message || "Could not clear notifications", "error");
+  } finally {
+    setButtonBusy(btn, false);
+  }
+}
+
+function bindNotificationPrefs() {
+  const prefs = document.getElementById("notifPrefs");
+  if (!prefs || prefs.dataset.bound) return;
+  prefs.dataset.bound = "1";
+  let state = {};
+  try {
+    state = JSON.parse(localStorage.getItem("mc_notif_prefs") || "{}");
+  } catch (_) {}
+  prefs.querySelectorAll("input[type='checkbox']").forEach((input) => {
+    const key = input.getAttribute("data-pref");
+    input.checked = state[key] !== false;
+    input.addEventListener("change", () => {
+      state[key] = input.checked;
+      localStorage.setItem("mc_notif_prefs", JSON.stringify(state));
+      showToast("Notification preferences saved");
+    });
+  });
+}
+
 function toggleNotifDropdown() {
   const dd = document.getElementById("notifDropdown");
   if (!dd) return;
   const willOpen = !dd.classList.contains("open");
   dd.classList.toggle("open", willOpen);
   if (willOpen) loadNotifList();
+  if (willOpen) bindNotificationPrefs();
 }
 
 document.addEventListener("click", (e) => {
@@ -417,6 +602,7 @@ async function initAuthGuard() {
   ["topSkills", "trendingDomains"].forEach((id) => setWidgetEmpty(id, "Loading..."));
   loadUsers();
   loadMentors();
+  renderQuickActions();
   loadDashboardActivity();
   loadNotificationsBadge();
   connectDashboardRealtime();
@@ -501,6 +687,7 @@ async function loadMentors() {
           '<span class="skill-tag">-</span>';
         const expertise = (m.expertiseTags || []).slice(0, 3).map((s) => `<span class="skill-tag expert">${escapeHtml(s)}</span>`).join("");
         const slotCount = (m.bookableSlots || []).filter((d) => new Date(d) > new Date()).length;
+        const trust = Math.min(99, Math.round((m.matchScore || 70) * 0.45 + Number(m.responseRate || 96) * 0.35 + Math.min(20, Number(m.totalSessions || 0))));
         const bookBtn =
           myUid && myUid !== m.firebaseUID && (localStorage.getItem("mc_role") || "") === "student"
             ? `<button type="button" class="connect-btn book-open" data-uid="${escapeHtml(m.firebaseUID)}">Book</button>`
@@ -510,10 +697,16 @@ async function loadMentors() {
           <div class="card-header">
             <div class="card-avatar">${pic}</div>
             <div class="card-info">
-              <div class="card-name">${escapeHtml(m.name || "Unknown")}</div>
+              <div class="card-name">${escapeHtml(m.name || "Unknown")} ${m.featured ? '<span class="featured-badge">Featured</span>' : ""}</div>
               <span class="badge-domain">${escapeHtml(m.domain || "General")}</span>
               <div class="card-meta">${escapeHtml(m.company || "")}</div>
             </div>
+          </div>
+          <div class="mentor-signal-row">
+            <span class="status-chip ${escapeHtml(m.availabilityStatus || "open")}"><i></i>${escapeHtml(availabilityLabel(m.availabilityStatus))}</span>
+            <span>${escapeHtml(Number(m.experienceYears || 0))}+ yrs</span>
+            <span>${escapeHtml(m.responseRate || 96)}% response</span>
+            <span>${escapeHtml(trust)} trust</span>
           </div>
           <div class="match-row"><span class="match-label">Match</span><span class="match-score">${m.matchScore ?? "-"}</span></div>
           <div class="rating-row">
@@ -523,6 +716,7 @@ async function loadMentors() {
             <span class="price-tag">${escapeHtml(m.currency || "INR")} ${m.pricePerSession || 0}<small>/session</small></span>
           </div>
           <p class="card-bio">${escapeHtml((m.bio || "").slice(0, 160))}${(m.bio || "").length > 160 ? "..." : ""}</p>
+          ${(m.languages || []).length ? `<div class="mentor-mini-meta">${escapeHtml((m.languages || []).slice(0, 3).join(" / "))}${m.timezone ? ` - ${escapeHtml(m.timezone)}` : ""}</div>` : ""}
           <div class="card-skills">${skills}${expertise}</div>
           <div class="card-actions">
             ${m.linkedin ? `<a class="connect-btn outline" href="${escapeHtml(m.linkedin)}" target="_blank" rel="noopener">LinkedIn</a>` : ""}
@@ -642,6 +836,7 @@ function buildNetworkCard(user, index) {
       </div>
     </div>
     <p class="card-bio">${escapeHtml((user.bio || "No bio yet.").slice(0, 140))}</p>
+    ${user.role === "mentor" ? `<div class="mentor-signal-row compact"><span class="status-chip ${escapeHtml(user.availabilityStatus || "open")}"><i></i>${escapeHtml(availabilityLabel(user.availabilityStatus))}</span><span>${escapeHtml(user.responseRate || 96)}% response</span></div>` : ""}
     <div class="card-skills">${skillsHtml}</div>
     <div class="card-actions">
       ${chat}
@@ -697,6 +892,8 @@ function openBookingModal(mentorUid) {
   }
   const topicInput = document.getElementById("bmTopic");
   if (topicInput) topicInput.value = "";
+  const goalsInput = document.getElementById("bmGoals");
+  if (goalsInput) goalsInput.value = "";
   modal.classList.add("open");
 }
 
@@ -718,6 +915,11 @@ async function submitBooking() {
   }
   const endDate = new Date(startDate.getTime() + 60 * 60 * 1000);
   const topic = document.getElementById("bmTopic").value.trim();
+  const sessionGoals = String(document.getElementById("bmGoals")?.value || "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .slice(0, 8);
   const submitBtn = document.getElementById("bmSubmit");
   bookingSubmitting = true;
   setButtonBusy(submitBtn, true, "Requesting...");
@@ -727,6 +929,7 @@ async function submitBooking() {
       startTime: startDate.toISOString(),
       endTime: endDate.toISOString(),
       topic,
+      sessionGoals,
     });
     
     if (!res.ok) {
@@ -783,6 +986,15 @@ document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("markAllNotifBtn")?.addEventListener("click", (e) => {
     e.stopPropagation();
     markAllNotificationsRead();
+  });
+  document.getElementById("clearAllNotifBtn")?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    clearAllNotifications();
+  });
+  document.getElementById("notifPrefsBtn")?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    document.getElementById("notifPrefs")?.classList.toggle("open");
+    bindNotificationPrefs();
   });
   if (!window.__mcNotifRecover) {
     window.__mcNotifRecover = true;

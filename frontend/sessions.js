@@ -4,6 +4,7 @@ let sessionSocket = null;
 let sessionSocketRefreshing = false;
 let pendingActionId = null;
 let rescheduleBookingId = null;
+let reviewTarget = null;
 
 function toast(msg, err) {
   const t = document.createElement("div");
@@ -36,6 +37,41 @@ function compactDate(value) {
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) return "Invalid date";
   return d.toLocaleString([], { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" });
+}
+
+function countdownText(value) {
+  const d = new Date(value);
+  const diff = d.getTime() - Date.now();
+  if (Number.isNaN(d.getTime())) return "";
+  if (diff <= 0) return "Ready now";
+  const mins = Math.floor(diff / 60000);
+  if (mins < 60) return `${Math.max(1, mins)}m`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ${mins % 60}m`;
+  return `${Math.floor(hours / 24)}d ${hours % 24}h`;
+}
+
+function statusTimelineHtml(status) {
+  const steps = ["pending", "confirmed", "completed"];
+  const current = status === "rejected" || status === "cancelled" ? status : status;
+  return `<div class="session-timeline">${steps
+    .map((s) => `<span class="${steps.indexOf(s) <= steps.indexOf(current) ? "done" : ""}">${esc(s)}</span>`)
+    .join("")}${["cancelled", "rejected"].includes(status) ? `<span class="stopped">${esc(status)}</span>` : ""}</div>`;
+}
+
+function parseGoals(raw) {
+  return String(raw || "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .slice(0, 8);
+}
+
+function goalsHtml(goals) {
+  const list = Array.isArray(goals) ? goals : [];
+  return list.length
+    ? list.map((g) => `<span class="goal-chip">${esc(g)}</span>`).join("")
+    : '<span class="slot-hint">No goals saved yet.</span>';
 }
 
 function setButtonBusy(btn, busy, label) {
@@ -165,6 +201,7 @@ function render() {
       const link = b.meetingLink && b.status === "confirmed"
         ? `<a class="connect-btn" href="${esc(b.meetingLink)}" target="_blank" rel="noopener">Join video</a>`
         : "";
+      const countdown = ["pending", "confirmed"].includes(b.status) ? `<span class="session-countdown">${esc(countdownText(b.startTime))}</span>` : "";
       let actions = "";
       const reviewBtn =
         !isMentor && b.status === "completed"
@@ -191,10 +228,20 @@ function render() {
             <span class="session-status ${b.status}">${b.status}</span>
             <span class="session-time">${esc(start)}</span>
           </div>
+          ${statusTimelineHtml(b.status)}
           <div class="session-body">
             <strong>${esc(otherInfo.role)}:</strong> ${esc(otherInfo.name)}<br/>
             <span>${esc(start)}${end ? ` - ${esc(end)}` : ""}</span><br/>
             ${b.topic ? `<span>Topic: ${esc(b.topic)}</span>` : ""}
+            ${countdown}
+          </div>
+          <div class="session-prep">
+            <div class="session-goals">${goalsHtml(b.sessionGoals)}</div>
+            <textarea class="session-note-input" data-note="${esc(String(b._id))}" rows="2" maxlength="1000" placeholder="Private session notes...">${esc(b.sessionNotes || "")}</textarea>
+            <div class="session-prep-actions">
+              <input class="session-goals-input" data-goals="${esc(String(b._id))}" value="${esc((b.sessionGoals || []).join(", "))}" placeholder="Goals, comma separated" />
+              <button type="button" class="connect-btn outline" data-prep="${esc(String(b._id))}">Save prep</button>
+            </div>
           </div>
           <div class="session-actions">${link}${actions}</div>
         </div>`;
@@ -205,33 +252,61 @@ function render() {
     btn.addEventListener("click", () => onAction(btn.getAttribute("data-act"), btn.getAttribute("data-id"), btn));
   });
   list.querySelectorAll("button[data-review]").forEach((btn) => {
-    btn.addEventListener("click", async () => {
-      try {
-        const mid = btn.getAttribute("data-mid");
-        const bid = btn.getAttribute("data-bid");
-        const rating = parseInt(prompt("Rating 1-5", "5"), 10);
-        if (!(rating >= 1 && rating <= 5)) return;
-        const comment = prompt("Review (optional)", "") || "";
-        
-        const res = await mcPost("/api/reviews/", {
-          mentorFirebaseUID: mid,
-          rating,
-          comment,
-          bookingId: bid,
-        });
-        
-        if (res.ok) {
-          toast("Thanks for your review!");
-        } else {
-          toast(res.error || "Failed", true);
-        }
-        loadBookings();
-      } catch (err) {
-        console.error("[SESSIONS] Review error:", err);
-        toast("Error submitting review", true);
-      }
-    });
+    btn.addEventListener("click", () => openReviewModal(btn.getAttribute("data-mid"), btn.getAttribute("data-bid")));
   });
+  list.querySelectorAll("button[data-prep]").forEach((btn) => {
+    btn.addEventListener("click", () => saveSessionPrep(btn.getAttribute("data-prep"), btn));
+  });
+}
+
+async function saveSessionPrep(id, btn) {
+  const safeId = String(id || "").replace(/"/g, "");
+  const note = document.querySelector(`textarea[data-note="${safeId}"]`)?.value || "";
+  const goals = parseGoals(document.querySelector(`input[data-goals="${safeId}"]`)?.value || "");
+  setButtonBusy(btn, true, "Saving...");
+  try {
+    const res = await mcPatch(`/api/bookings/${id}/prep`, { sessionNotes: note, sessionGoals: goals });
+    if (!res.ok) throw new Error(res.error || "Could not save prep");
+    toast("Session prep saved");
+    loadBookings();
+  } catch (err) {
+    console.error("[SESSIONS] Prep save error:", err);
+    toast(err.message || "Could not save prep", true);
+  } finally {
+    setButtonBusy(btn, false);
+  }
+}
+
+function openReviewModal(mentorFirebaseUID, bookingId) {
+  reviewTarget = { mentorFirebaseUID, bookingId };
+  document.getElementById("reviewRating").value = "5";
+  document.getElementById("reviewComment").value = "";
+  document.getElementById("reviewModal")?.classList.add("open");
+}
+
+function closeReviewModal() {
+  reviewTarget = null;
+  document.getElementById("reviewModal")?.classList.remove("open");
+}
+
+async function submitReview() {
+  if (!reviewTarget) return;
+  const btn = document.getElementById("reviewSubmit");
+  const rating = Number(document.getElementById("reviewRating")?.value || 5);
+  const comment = document.getElementById("reviewComment")?.value || "";
+  setButtonBusy(btn, true, "Submitting...");
+  try {
+    const res = await mcPost("/api/reviews/", { ...reviewTarget, rating, comment });
+    if (!res.ok) throw new Error(res.error || "Review failed");
+    toast("Thanks for your review!");
+    closeReviewModal();
+    loadBookings();
+  } catch (err) {
+    console.error("[SESSIONS] Review error:", err);
+    toast(err.message || "Error submitting review", true);
+  } finally {
+    setButtonBusy(btn, false);
+  }
 }
 
 async function onAction(act, id, btn) {
@@ -354,5 +429,11 @@ document.addEventListener("DOMContentLoaded", async () => {
   document.getElementById("reschedSubmit")?.addEventListener("click", submitReschedule);
   document.getElementById("rescheduleModal")?.addEventListener("click", (e) => {
     if (e.target.id === "rescheduleModal") closeRescheduleModal();
+  });
+  document.getElementById("reviewClose")?.addEventListener("click", closeReviewModal);
+  document.getElementById("reviewCancel")?.addEventListener("click", closeReviewModal);
+  document.getElementById("reviewSubmit")?.addEventListener("click", submitReview);
+  document.getElementById("reviewModal")?.addEventListener("click", (e) => {
+    if (e.target.id === "reviewModal") closeReviewModal();
   });
 });

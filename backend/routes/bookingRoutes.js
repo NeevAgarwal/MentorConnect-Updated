@@ -32,7 +32,22 @@ function transactionUnsupported(err) {
   return /Transaction numbers|replica set member|mongos|transactions are not supported/i.test(msg);
 }
 
-async function createBookingCore({ studentFirebaseUID, mentorFirebaseUID, start, end, topic, mentor, usedPublishedSlot }, session) {
+function normalizeStringArray(value, maxItems = 8, maxLength = 120) {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set();
+  const out = [];
+  value.forEach((item) => {
+    const s = String(item || "").trim().slice(0, maxLength);
+    const key = s.toLowerCase();
+    if (s && !seen.has(key) && out.length < maxItems) {
+      seen.add(key);
+      out.push(s);
+    }
+  });
+  return out;
+}
+
+async function createBookingCore({ studentFirebaseUID, mentorFirebaseUID, start, end, topic, sessionGoals, mentor, usedPublishedSlot }, session) {
   const query = Booking.findOne({
     mentorFirebaseUID,
     status: { $in: ["pending", "confirmed"] },
@@ -49,6 +64,7 @@ async function createBookingCore({ studentFirebaseUID, mentorFirebaseUID, start,
     endTime: end,
     status: "pending",
     topic: topic || "",
+    sessionGoals: normalizeStringArray(sessionGoals || []),
     meetingLink: "",
     priceAtBooking: mentor.pricePerSession || 0,
     usedPublishedSlot,
@@ -87,12 +103,13 @@ router.post(
   body("startTime").isISO8601(),
   body("endTime").isISO8601(),
   body("topic").optional().isString().isLength({ max: 280 }),
+  body("sessionGoals").optional().isArray({ max: 8 }),
   async (req, res) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) return res.status(400).json({ success: false, errors: errors.array() });
 
     const studentFirebaseUID = req.auth.uid;
-    const { mentorFirebaseUID, startTime, endTime, topic } = req.body;
+    const { mentorFirebaseUID, startTime, endTime, topic, sessionGoals } = req.body;
 
     if (mentorFirebaseUID === studentFirebaseUID) {
       return res.status(400).json({ success: false, error: "Cannot book yourself" });
@@ -121,7 +138,7 @@ router.post(
     }
 
     let created;
-    const bookingArgs = { studentFirebaseUID, mentorFirebaseUID, start, end, topic, mentor, usedPublishedSlot };
+    const bookingArgs = { studentFirebaseUID, mentorFirebaseUID, start, end, topic, sessionGoals, mentor, usedPublishedSlot };
     const session = await mongoose.startSession();
     try {
       await session.withTransaction(async () => {
@@ -332,6 +349,33 @@ router.patch(
       meta: { bookingId: String(booking._id) },
     });
 
+    res.json({ success: true, booking });
+  }
+);
+
+router.patch(
+  "/:id/prep",
+  requireAuth,
+  param("id").isMongoId(),
+  body("sessionGoals").optional().isArray({ max: 8 }),
+  body("sessionNotes").optional().isString().isLength({ max: 1000 }),
+  async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) return res.status(400).json({ success: false, errors: errors.array() });
+
+    const booking = await Booking.findById(req.params.id);
+    if (!booking) return res.status(404).json({ success: false, error: "Not found" });
+    const uid = req.auth.uid;
+    if (booking.studentFirebaseUID !== uid && booking.mentorFirebaseUID !== uid) {
+      return res.status(403).json({ success: false, error: "Forbidden" });
+    }
+    if (req.body.sessionGoals !== undefined) {
+      booking.sessionGoals = normalizeStringArray(req.body.sessionGoals);
+    }
+    if (req.body.sessionNotes !== undefined) {
+      booking.sessionNotes = String(req.body.sessionNotes || "").slice(0, 1000);
+    }
+    await booking.save();
     res.json({ success: true, booking });
   }
 );

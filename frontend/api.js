@@ -23,6 +23,15 @@ function normalizeSessionPayload(raw) {
   return { token, user };
 }
 
+function mcApiBase() {
+  return String(window.MC_API || "http://localhost:5000").trim().replace(/\/+$/, "");
+}
+
+function mcApiUrl(path) {
+  const normalizedPath = path.startsWith("/") ? path : "/" + path;
+  return mcApiBase() + normalizedPath;
+}
+
 /**
  * Store JWT and user info from session response
  */
@@ -57,9 +66,7 @@ async function syncMcJwt() {
     }
 
     const idToken = await auth.currentUser.getIdToken(true);
-    const base = window.MC_API || "http://localhost:5000";
-
-    const res = await fetch(base + "/api/auth/session", {
+    const res = await fetch(mcApiUrl("/api/auth/session"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ idToken }),
@@ -185,7 +192,7 @@ async function parseApiResponse(res, path) {
  * Returns { ok: boolean, status: number, data: object, error?: string }
  */
 async function mcFetch(path, options = {}) {
-  const base = window.MC_API || "http://localhost:5000";
+  const base = mcApiBase();
 
   if (!base) {
     return {

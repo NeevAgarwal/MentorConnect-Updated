@@ -68,6 +68,10 @@
         <div class="preview-role-wrap">
           <span class="card-role" id="previewRole">student</span>
         </div>
+        <div class="preview-presence" id="previewPresence">
+          <span class="presence-dot"></span>
+          <span>Available</span>
+        </div>
         <div class="profile-completion">
           <div class="completion-top">
             <span>Profile completion</span>
@@ -78,6 +82,7 @@
         <p class="preview-bio" id="previewBio">Your bio will appear here...</p>
         <div class="preview-skills" id="previewSkills"></div>
         <div class="preview-stats" id="previewStats"></div>
+        <div class="preview-achievements" id="previewAchievements"></div>
         <div class="preview-links" id="previewLinks"></div>
       </div>
 
@@ -196,6 +201,32 @@
             <label class="form-label">Experience / Background</label>
             <input type="text" id="experienceInput" class="profile-input" placeholder="e.g. 3 years at Google, CS grad..." />
           </div>
+          <div class="form-row-2">
+            <div class="form-group">
+              <label class="form-label">Experience years</label>
+              <input type="number" id="experienceYearsInput" class="profile-input" min="0" max="60" step="1" placeholder="3" />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Availability status</label>
+              <select id="availabilityStatusInput" class="profile-input">
+                <option value="open">Open to bookings</option>
+                <option value="busy">Limited availability</option>
+                <option value="away">Away this week</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-row-2">
+            <div class="form-group">
+              <label class="form-label">Timezone</label>
+              <input type="text" id="timezoneInput" class="profile-input" placeholder="Asia/Kolkata" maxlength="80" />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Learning progress</label>
+              <input type="number" id="learningProgressInput" class="profile-input" min="0" max="100" step="1" placeholder="0" />
+            </div>
+          </div>
+          <p class="section-sub">Languages spoken (Enter to add)</p>
+          <div class="skills-input-wrap"><div class="skills-tags" id="languageTags"></div><input type="text" id="languageInput" class="skill-input-field" placeholder="e.g. English, Hindi" /></div>
           <div class="profile-timeline" id="profileTimeline"></div>
         </div>
 

@@ -34,6 +34,18 @@ const UserSchema = new mongoose.Schema(
     company: { type: String, default: "", maxlength: 120 },
     education: { type: String, default: "", maxlength: 160 },
     experience: { type: String, default: "", maxlength: 500 },
+    experienceYears: { type: Number, default: 0, min: 0, max: 60 },
+    languages: { type: [String], default: [] },
+    timezone: { type: String, default: "", maxlength: 80 },
+    availabilityStatus: {
+      type: String,
+      enum: ["open", "busy", "away"],
+      default: "open",
+    },
+    responseRate: { type: Number, default: 96, min: 0, max: 100 },
+    lastActiveAt: { type: Date, default: Date.now },
+    streakCount: { type: Number, default: 0, min: 0 },
+    learningProgress: { type: Number, default: 0, min: 0, max: 100 },
 
     pricePerSession: { type: Number, default: 0, min: 0, max: 100000 },
     currency: { type: String, default: "INR", maxlength: 8 },

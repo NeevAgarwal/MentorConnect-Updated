@@ -58,7 +58,7 @@ async function parseBody(res) {
 }
 
 export async function apiFetch(path, options = {}) {
-  const base = window.MC_API || "";
+  const base = String(window.MC_API || "").trim().replace(/\/+$/, "");
   if (!base) throw new ApiError("API not configured", 0, null);
 
   await ensureAuthReady(path, options);
